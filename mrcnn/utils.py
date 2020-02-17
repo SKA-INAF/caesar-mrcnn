@@ -924,8 +924,8 @@ def read_fits(filename,stretch=True,normalize=True,convertToRGB=True):
     try:
         hdu= fits.open(filename,memmap=False)
     except Exception as ex:
-        errmsg= 'Cannot read image file: ' + filename
-        logger.error(errmsg)
+        errmsg= 'ERROR: Cannot read image file: ' + filename
+        print(errmsg)
         return None
 
     # - Read data
@@ -937,9 +937,9 @@ def read_fits(filename,stretch=True,normalize=True,convertToRGB=True):
     elif nchan==2:
       output_data= data	
     else:
-      errmsg= 'Invalid/unsupported number of channels found in file ' + filename + ' (nchan=' + str(nchan) + ')!'
+      errmsg= 'ERROR: Invalid/unsupported number of channels found in file ' + filename + ' (nchan=' + str(nchan) + ')!'
       hdu.close()
-      logger.error(errmsg)
+      print(errmsg)
       return None
 
     # - Convert data to float 32
