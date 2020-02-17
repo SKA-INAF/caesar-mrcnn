@@ -263,7 +263,7 @@ def detect_and_color_splash(model, image_path):
 	
 	# Read image
 	#image = skimage.io.imread(args.image)
-	image, header= utils.read_fits(args.image,stretch=True,normalize=True,convertToRGB=True)	
+	image, header= utils.read_fits(filename=image_path,stretch=True,normalize=True,convertToRGB=True)
 
 	# Detect objects
 	r = model.detect([image], verbose=1)[0]
