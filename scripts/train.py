@@ -111,7 +111,7 @@ class SidelobeConfig(Config):
 	#         IMAGE_MAX_DIM is not used in this mode.
 	IMAGE_RESIZE_MODE = "pad64"
 	IMAGE_MIN_DIM = None
-	IMAGE_MAX_DIM = None
+	IMAGE_MAX_DIM = 192
 	
 	# Image mean (RGB)
 	MEAN_PIXEL = np.array([112,112,112])
