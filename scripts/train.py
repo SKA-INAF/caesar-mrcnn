@@ -271,7 +271,7 @@ class SidelobeDataset(utils.Dataset):
 		return data3_uint8
 
 
-def train(model):    
+def train(model,nepochs=10):    
 	"""Train the model."""
     
 	# Training dataset.
@@ -291,7 +291,7 @@ def train(model):
 	print("Training network heads")
 	model.train(dataset_train, dataset_val,	
 		learning_rate=config.LEARNING_RATE,
-		epochs=30,
+		epochs=nepochs,
 		layers='heads'
 	)
 
@@ -352,6 +352,7 @@ if __name__ == '__main__':
 	parser.add_argument('--weights', required=True,metavar="/path/to/weights.h5",help="Path to weights .h5 file or 'coco'")
 	parser.add_argument('--logs', required=False,default=DEFAULT_LOGS_DIR,metavar="/path/to/logs/",help='Logs and checkpoints directory (default=logs/)')
 	parser.add_argument('--image', required=False,metavar="path or URL to image",help='Image to apply the color splash effect on')
+	parser.add_argument('--nepochs', required=False,default=10,type=int,metavar="Number of training epochs",help='Number of training epochs')
 
 	args = parser.parse_args()
 
@@ -364,6 +365,7 @@ if __name__ == '__main__':
 	print("Weights: ", args.weights)
 	print("Dataset: ", args.dataset)
 	print("Logs: ", args.logs)
+	print("nEpochs: ",args.nepochs)
 
 	# Configurations
 	if args.command == "train":
