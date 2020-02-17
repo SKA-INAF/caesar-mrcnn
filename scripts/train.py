@@ -34,14 +34,7 @@ import datetime
 import numpy as np
 import skimage.draw
 
-## ASTRO MODULES
-from astropy.io import ascii, fits
-from astropy.units import Quantity
-from astropy.modeling.parameters import Parameter
-from astropy.modeling.core import Fittable2DModel
-from astropy import wcs
-from astropy import units as u
-from astropy.visualization import ZScaleInterval
+
 
 # Root directory of the project
 #ROOT_DIR = os.path.abspath("../../")
@@ -230,7 +223,8 @@ def train(model,nepochs=10,nthreads=1):
 	model.train(dataset_train, dataset_val,	
 		learning_rate=config.LEARNING_RATE,
 		epochs=nepochs,
-		layers='heads',
+		#layers='heads',
+		layers='all',
 		n_worker_threads=nthreads
 	)
 
