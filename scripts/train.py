@@ -166,7 +166,7 @@ class SidelobeDataset(utils.Dataset):
 		class_id= info["class_id"]
 
 		# Read mask
-		data, header= read_fits(filename,stretch=False,normalize=False,convertToRGB=False)
+		data, header= utils.read_fits(filename,stretch=False,normalize=False,convertToRGB=False)
 		height= data.shape[0]
 		width= data.shape[1]
 
@@ -186,7 +186,7 @@ class SidelobeDataset(utils.Dataset):
 		# Load image
 		filename= self.image_info[image_id]['path']
 
-		image, header= read_fits(filename,stretch=True,normalize=True,convertToRGB=True)
+		image, header= utils.read_fits(filename,stretch=True,normalize=True,convertToRGB=True)
 		
 		#image = skimage.io.imread(filename)
         
@@ -263,7 +263,7 @@ def detect_and_color_splash(model, image_path):
 	
 	# Read image
 	#image = skimage.io.imread(args.image)
-	image, header= read_fits(image_path,stretch=True,normalize=True,convertToRGB=True)	
+	image, header= utils.read_fits(image_path,stretch=True,normalize=True,convertToRGB=True)	
 
 	# Detect objects
 	r = model.detect([image], verbose=1)[0]
