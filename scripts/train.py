@@ -300,7 +300,7 @@ class SidelobeDataset(utils.Dataset):
 		return data3_uint8
 
 
-def train(model,nepochs=10):    
+def train(model,nepochs=10,nthreads=1):    
 	"""Train the model."""
     
 	# Training dataset.
@@ -321,7 +321,8 @@ def train(model,nepochs=10):
 	model.train(dataset_train, dataset_val,	
 		learning_rate=config.LEARNING_RATE,
 		epochs=nepochs,
-		layers='heads'
+		layers='heads',
+		n_worker_threads=nthreads
 	)
 
 
@@ -383,6 +384,7 @@ if __name__ == '__main__':
 	parser.add_argument('--image', required=False,metavar="path or URL to image",help='Image to apply the color splash effect on')
 	parser.add_argument('--nepochs', required=False,default=10,type=int,metavar="Number of training epochs",help='Number of training epochs')
 	parser.add_argument('--weighttype', required=False,default='',metavar="Type of weights",help="Type of weights")
+	parser.add_argument('--nthreads', required=False,default=1,type=int,metavar="Number of worker threads",help="Number of worker threads")
 	
 	args = parser.parse_args()
 
@@ -450,7 +452,7 @@ if __name__ == '__main__':
 
 	# Train or evaluate
 	if args.command == "train":
-		train(model)
+		train(model,args.nthreads)
 	elif args.command == "splash":
 		detect_and_color_splash(model, image_path=args.image)
 	else:
