@@ -87,7 +87,7 @@ class SidelobeConfig(Config):
 	DETECTION_MIN_CONFIDENCE = 0.9
 
 	# Length of square anchor side in pixels
-	RPN_ANCHOR_SCALES = (4,8,16,32)
+	RPN_ANCHOR_SCALES = (2,4,8,16,32)
 
 	# Input image resizing
 	# Generally, use the "square" resizing mode for training and predicting
