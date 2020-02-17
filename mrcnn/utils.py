@@ -912,3 +912,97 @@ def resize(image, output_shape, order=1, mode='constant', cval=0, clip=True,
             image, output_shape,
             order=order, mode=mode, cval=cval, clip=clip,
             preserve_range=preserve_range)
+
+
+############################################################
+#  Data I/O
+############################################################
+def read_fits(self,filename,stretch=True,normalize=True,convertToRGB=True):
+    """ Read FITS image """
+	
+    # - Open file
+    try:
+        hdu= fits.open(filename,memmap=False)
+    except Exception as ex:
+        errmsg= 'Cannot read image file: ' + filename
+        logger.error(errmsg)
+        return None
+
+    # - Read data
+    data= hdu[0].data
+    data_size= np.shape(data)
+    nchan= len(data.shape)
+    if nchan==4:
+      output_data= data[0,0,:,:]
+    elif nchan==2:
+      output_data= data	
+    else:
+      errmsg= 'Invalid/unsupported number of channels found in file ' + filename + ' (nchan=' + str(nchan) + ')!'
+      hdu.close()
+      logger.error(errmsg)
+      return None
+
+    # - Convert data to float 32
+    output_data= output_data.astype(np.float32)
+
+    # - Read metadata
+    header= hdu[0].header
+
+    # - Close file
+    hdu.close()
+
+    # - Replace nan values with min pix value
+    img_min= np.nanmin(output_data)
+    output_data[np.isnan(output_data)]= img_min	
+
+    # - Stretch data using zscale transform
+    if stretch:
+        data_stretched= self.stretch_img(output_data)
+        output_data= data_stretched
+        output_data= output_data.astype(np.float32)
+
+    # - Normalize data to [0,255]
+    if normalize:
+        data_norm= self.normalize_img(output_data)
+        output_data= data_norm
+        output_data= output_data.astype(np.float32)
+
+    # - Convert to RGB image
+    if convertToRGB:
+        if not normalize:
+            data_norm= self.normalize_img(output_data)
+            output_data= data_norm
+        data_rgb= self.gray2rgb(output_data) 
+        output_data= data_rgb
+
+    return output_data, header
+	
+	
+def stretch_img(self,data,contrast=0.25):
+    """ Apply z-scale stretch to image """
+		
+    transform= ZScaleInterval(contrast=contrast)
+    data_stretched= transform(data)
+	
+    return data_stretched
+
+def normalize_img(self,data):
+    """ Normalize image to (0,1) """
+	
+    data_max= np.max(data)
+    data_norm= data/data_max
+
+    return data_norm
+
+def gray2rgb(self,data_float):
+    """ Convert gray image data to rgb """
+
+    # - Convert to uint8
+    data_uint8 = np.array( (data_float*255).round(), dtype = np.uint8)
+	
+    # - Convert to uint8 3D
+    data3_uint8 = np.stack((data_uint8,)*3, axis=-1)
+
+    return data3_uint8
+
+
