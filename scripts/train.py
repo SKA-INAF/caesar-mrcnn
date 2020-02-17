@@ -353,7 +353,8 @@ if __name__ == '__main__':
 	parser.add_argument('--logs', required=False,default=DEFAULT_LOGS_DIR,metavar="/path/to/logs/",help='Logs and checkpoints directory (default=logs/)')
 	parser.add_argument('--image', required=False,metavar="path or URL to image",help='Image to apply the color splash effect on')
 	parser.add_argument('--nepochs', required=False,default=10,type=int,metavar="Number of training epochs",help='Number of training epochs')
-
+	parser.add_argument('--weighttype', required=False,default='',metavar="Type of weights",help="Type of weights")
+	
 	args = parser.parse_args()
 
 	# Validate arguments
@@ -386,23 +387,26 @@ if __name__ == '__main__':
 		model = modellib.MaskRCNN(mode="inference", config=config,model_dir=args.logs)
 
 	# Select weights file to load
-	if args.weights.lower() == "coco":
-		weights_path = COCO_WEIGHTS_PATH
-		# Download weights file
-		if not os.path.exists(weights_path):
-			utils.download_trained_weights(weights_path)
-	elif args.weights.lower() == "last":
-		# Find last trained weights
-		weights_path = model.find_last()
-	elif args.weights.lower() == "imagenet":
-		# Start from ImageNet trained weights
-		weights_path = model.get_imagenet_weights()
-	else:
-		weights_path = args.weights
+	weights_path = args.weights
+
+	#if args.weights.lower() == "coco":
+	#	weights_path = COCO_WEIGHTS_PATH
+	#	# Download weights file
+	#	if not os.path.exists(weights_path):
+	#		utils.download_trained_weights(weights_path)
+	#elif args.weights.lower() == "last":
+	#	# Find last trained weights
+	#	weights_path = model.find_last()
+	#elif args.weights.lower() == "imagenet":
+	#	# Start from ImageNet trained weights
+	#	weights_path = model.get_imagenet_weights()
+	#else:
+	#	weights_path = args.weights
 
 	# Load weights
 	print("Loading weights ", weights_path)
-	if args.weights.lower() == "coco":
+	#if args.weights.lower() == "coco":
+	if args.weighttype.lower() == "coco":
 		# Exclude the last layers because they require a matching
 		# number of classes
 		model.load_weights(
