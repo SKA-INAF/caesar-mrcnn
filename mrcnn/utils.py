@@ -917,7 +917,7 @@ def resize(image, output_shape, order=1, mode='constant', cval=0, clip=True,
 ############################################################
 #  Data I/O
 ############################################################
-def read_fits(self,filename,stretch=True,normalize=True,convertToRGB=True):
+def read_fits(filename,stretch=True,normalize=True,convertToRGB=True):
     """ Read FITS image """
 	
     # - Open file
@@ -957,28 +957,28 @@ def read_fits(self,filename,stretch=True,normalize=True,convertToRGB=True):
 
     # - Stretch data using zscale transform
     if stretch:
-        data_stretched= self.stretch_img(output_data)
+        data_stretched= stretch_img(output_data)
         output_data= data_stretched
         output_data= output_data.astype(np.float32)
 
     # - Normalize data to [0,255]
     if normalize:
-        data_norm= self.normalize_img(output_data)
+        data_norm= normalize_img(output_data)
         output_data= data_norm
         output_data= output_data.astype(np.float32)
 
     # - Convert to RGB image
     if convertToRGB:
         if not normalize:
-            data_norm= self.normalize_img(output_data)
+            data_norm= normalize_img(output_data)
             output_data= data_norm
-        data_rgb= self.gray2rgb(output_data) 
+        data_rgb= gray2rgb(output_data) 
         output_data= data_rgb
 
     return output_data, header
 	
 	
-def stretch_img(self,data,contrast=0.25):
+def stretch_img(data,contrast=0.25):
     """ Apply z-scale stretch to image """
 		
     transform= ZScaleInterval(contrast=contrast)
@@ -986,7 +986,7 @@ def stretch_img(self,data,contrast=0.25):
 	
     return data_stretched
 
-def normalize_img(self,data):
+def normalize_img(data):
     """ Normalize image to (0,1) """
 	
     data_max= np.max(data)
@@ -994,7 +994,7 @@ def normalize_img(self,data):
 
     return data_norm
 
-def gray2rgb(self,data_float):
+def gray2rgb(data_float):
     """ Convert gray image data to rgb """
 
     # - Convert to uint8
