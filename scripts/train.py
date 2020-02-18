@@ -451,7 +451,7 @@ if __name__ == '__main__':
 	if args.command == "train":
 		train(model,args.nepochs,args.nthreads)
 	elif args.command == "test":
-		
+		test(model)	
 	elif args.command == "splash":
 		detect_and_color_splash(model, image_path=args.image)
 	else:
