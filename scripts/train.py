@@ -33,7 +33,7 @@ import json
 import datetime
 import numpy as np
 import skimage.draw
-
+from imgaug import augmenters as iaa
 
 
 # Root directory of the project
@@ -74,14 +74,28 @@ class SidelobeConfig(Config):
 	NUM_CLASSES = 1 + 1  # Background + sidelobes
 
 	# Number of training steps per epoch
-	STEPS_PER_EPOCH = 100
+	STEPS_PER_EPOCH = 1000
 
-	# Skip detections with < 90% confidence
-	DETECTION_MIN_CONFIDENCE = 0.9
+	# Don't exclude based on confidence. Since we have two classes
+	# then 0.5 is the minimum anyway as it picks between source and BG
+	DETECTION_MIN_CONFIDENCE = 0 # default=0.9 (skip detections with <90% confidence)
+
+	# Non-maximum suppression threshold for detection
+	DETECTION_NMS_THRESHOLD = 0.3
 
 	# Length of square anchor side in pixels
-	RPN_ANCHOR_SCALES = (2,4,8,16,32)
+	RPN_ANCHOR_SCALES = (4,8,16,32,64)
 
+	# Maximum number of ground truth instances to use in one image
+	MAX_GT_INSTANCES = 300 # default=100
+
+	# Use a smaller backbone
+	BACKBONE = "resnet101"
+
+	# The strides of each layer of the FPN Pyramid. These values
+	# are based on a Resnet101 backbone.
+	BACKBONE_STRIDES = [4, 8, 16, 32, 64]
+	
 	# Input image resizing
 	# Generally, use the "square" resizing mode for training and predicting
 	# and it should work well in most cases. In this mode, images are scaled
@@ -107,7 +121,42 @@ class SidelobeConfig(Config):
 	IMAGE_MAX_DIM = 192
 	
 	# Image mean (RGB)
-	MEAN_PIXEL = np.array([112,112,112])
+	#MEAN_PIXEL = np.array([112,112,112])
+	# Image mean (RGB) - consider setting these to zero, and do per image mean/std normalization
+	MEAN_PIXEL = np.array([0, 0, 0])
+
+	# Non-max suppression threshold to filter RPN proposals.
+	# You can increase this during training to generate more propsals.
+	RPN_NMS_THRESHOLD = 0.9 # default=0.7
+
+	# How many anchors per image to use for RPN training
+	RPN_TRAIN_ANCHORS_PER_IMAGE = 512  # default=128
+
+	# Number of ROIs per image to feed to classifier/mask heads	
+	# The Mask RCNN paper uses 512 but often the RPN doesn't generate
+	# enough positive proposals to fill this and keep a positive:negative
+	# ratio of 1:3. You can increase the number of proposals by adjusting
+	# the RPN NMS threshold.
+	TRAIN_ROIS_PER_IMAGE = 512
+
+
+	# Ratios of anchors at each cell (width/height)
+	# A value of 1 represents a square anchor, and 0.5 is a wide anchor
+	RPN_ANCHOR_RATIOS = [0.5, 1, 2]
+
+	## Learning rate and momentum
+	## The Mask RCNN paper uses lr=0.02, but on TensorFlow it causes
+	## weights to explode. Likely due to differences in optimizer
+	## implementation.
+	LEARNING_RATE = 0.0005
+	# LEARNING_MOMENTUM = 0.9
+	OPTIMIZER = "ADAM" # default is SGD
+
+	# If enabled, resizes instance masks to a smaller size to reduce
+	# memory load. Recommended when using high-resolution images.
+	USE_MINI_MASK = False
+
+
 
 ############################################################
 #  Dataset
@@ -215,18 +264,61 @@ def train(model,nepochs=10,nthreads=1):
 	dataset_val.load_dataset(args.dataset)
 	dataset_val.prepare()
 
+	# Image augmentation
+	# http://imgaug.readthedocs.io/en/latest/source/augmenters.html
+	augmentation = iaa.SomeOf((0, 2), 
+		[
+			iaa.Fliplr(0.5),
+			iaa.Flipud(0.5),
+			iaa.OneOf([iaa.Affine(rotate=90),iaa.Affine(rotate=180),iaa.Affine(rotate=270)])
+		]
+	)
+
 	# *** This training schedule is an example. Update to your needs ***
 	# Since we're using a very small dataset, and starting from
 	# COCO trained weights, we don't need to train too long. Also,
 	# no need to train all layers, just the heads should do it.
-	print("Training network heads")
+	print("INFO: Training network ...")
 	model.train(dataset_train, dataset_val,	
 		learning_rate=config.LEARNING_RATE,
 		epochs=nepochs,
+		augmentation=augmentation,
 		#layers='heads',
 		layers='all',
 		n_worker_threads=nthreads
 	)
+
+
+def test(model):
+	""" Test the model on input dataset """    
+	dataset = SidelobeDataset()
+	dataset.load_dataset(args.dataset)
+	dataset.prepare()
+
+	for index, image_id in enumerate(dataset.image_ids):
+		# - Load image
+		image = dataset.load_image(image_id)
+		image_path = dataset.image_info[index]['path']
+
+		# - Load mask
+		# ...
+		# ...		
+
+		# Detect objects
+		r = model.detect([image], verbose=0)[0]
+		mask= r['masks']
+        
+		# Create regions from detections
+		if mask.shape[-1] > 0:
+			print("INFO: Mask found for image %s ..." % image)
+			for i in range(0,mask.shape[-1]):
+				mask_data = mask[:,:,i]
+				print("--> Mask %d " % i+1)
+				print(mask_data)
+		else:
+			print("INFO: No object mask found for image %s..." % image)
+			continue
+		
 
 
 def color_splash(image, mask):
@@ -294,8 +386,10 @@ if __name__ == '__main__':
 	# Validate arguments
 	if args.command == "train":
 		assert args.dataset, "Argument --dataset is required for training"
+	elif args.command == "test":
+		assert args.dataset, "Argument --dataset is required for testing"
 	elif args.command == "splash":
-		assert args.image or args.video, "Provide --image or --video to apply color splash"
+		assert args.image, "Provide --image to apply color splash"
 
 	print("Weights: ", args.weights)
 	print("Dataset: ", args.dataset)
@@ -356,6 +450,8 @@ if __name__ == '__main__':
 	# Train or evaluate
 	if args.command == "train":
 		train(model,args.nepochs,args.nthreads)
+	elif args.command == "test":
+		
 	elif args.command == "splash":
 		detect_and_color_splash(model, image_path=args.image)
 	else:
