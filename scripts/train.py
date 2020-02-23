@@ -305,7 +305,8 @@ def test(model):
 		# - Load mask
 		mask_gt= dataset.load_mask(image_id)
 		image_masked_gt= np.copy(image)
-		image_masked_gt[mask_gt]= [255,0,0]
+		print(image_masked_gt.shape)
+		image_masked_gt[mask_gt==1]= [255,0,0]
 		outfile = 'gtmask_' + image_path_base_noext + '.png'
 		skimage.io.imsave(outfile, image_masked_gt)
 
