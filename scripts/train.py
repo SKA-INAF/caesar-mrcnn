@@ -321,7 +321,7 @@ def test(model):
 		image_path_base_noext= os.path.splitext(image_path_base)[0]		
 
 		# - Load mask
-		mask_gt= dataset.load_mask_gt(image_id)
+		mask_gt= dataset.load_gt_mask(image_id)
 		print("mask_gt shape")
 		print(mask_gt.shape)
 
