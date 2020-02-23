@@ -304,6 +304,9 @@ def test(model):
 
 		# - Load mask
 		mask_gt= dataset.load_mask(image_id)
+		print("mask_gt shape")
+		print(mask_gt.shape)
+
 		mask_gt_chan3= np.broadcast_to(mask_gt,image.shape)
 		image_masked_gt= np.copy(image)
 		print(image_masked_gt.shape)
