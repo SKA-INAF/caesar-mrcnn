@@ -332,7 +332,7 @@ def test(model):
 			if n_mask_true>0:
 				# Collapse mask in one layer
 				mask_merged = (np.sum(mask, -1, keepdims=True) >= 1)
-				mask_merged_chan3= np.broadcast_to(mask_merged,image_masked.shape)
+				mask_merged_chan3= np.broadcast_to(mask_merged,image.shape)
 				print("mask_merged shape")
 				print(mask_merged.shape)
 				print(mask_merged)
