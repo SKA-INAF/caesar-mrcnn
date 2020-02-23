@@ -334,6 +334,7 @@ def test(model):
 				mask_merged = (np.sum(mask, -1, keepdims=True) >= 1)
 				print("mask_merged shape")
 				print(mask_merged.shape)
+				print(mask_merged)
 
 				# Color mask pixels with red
 				image_masked= np.copy(image)
