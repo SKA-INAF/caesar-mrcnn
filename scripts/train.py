@@ -315,7 +315,7 @@ def test(model):
 			print("INFO: Mask found for image %s ..." % image_path_base)
 			for i in range(0,mask.shape[-1]):
 				mask_data = mask[:,:,i]
-				print("--> Mask %d " % i+1)
+				print("--> Printing mask no. %s " % (str(i+1)))
 				print(mask_data)
 				
 			# Color splash
