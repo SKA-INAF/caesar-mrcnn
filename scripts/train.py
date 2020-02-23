@@ -313,17 +313,25 @@ def test(model):
 		# Create regions from detections
 		if mask.shape[-1] > 0:
 			print("INFO: Mask found for image %s ..." % image_path_base)
+
+			n_mask_true= 0
 			for i in range(0,mask.shape[-1]):
 				mask_data = mask[:,:,i]
+				counts= np.count_nonzero(mask_data)
+				if counts<=0:
+					continue
+
+				n_mask_true+= counts
 				print("--> Printing mask no. %s " % (str(i+1)))
 				print(mask_data)
 				
-			# Color splash
-			splash = color_splash(image, mask)
+			if n_mask_true>0:
+				# Color splash
+				splash = color_splash(image, mask)
 	
-			# Save output
-			outfile = 'splash_' + image_path_base_noext + '.png'
-			skimage.io.imsave(outfile, splash)
+				# Save output
+				outfile = 'splash_' + image_path_base_noext + '.png'
+				skimage.io.imsave(outfile, splash)
 
 		else:
 			print("INFO: No object mask found for image %s ..." % image_path_base)
