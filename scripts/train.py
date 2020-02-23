@@ -299,6 +299,8 @@ def test(model):
 		# - Load image
 		image = dataset.load_image(image_id)
 		image_path = dataset.image_info[index]['path']
+		image_path_base= os.path.basename(image_path)
+		image_path_base_noext= os.path.splitext(image_path_base)[0]		
 
 		# - Load mask
 		# ...
@@ -310,13 +312,21 @@ def test(model):
         
 		# Create regions from detections
 		if mask.shape[-1] > 0:
-			print("INFO: Mask found for image %s ..." % image)
+			print("INFO: Mask found for image %s ..." % image_path_base)
 			for i in range(0,mask.shape[-1]):
 				mask_data = mask[:,:,i]
 				print("--> Mask %d " % i+1)
 				print(mask_data)
+				
+			# Color splash
+			splash = color_splash(image, masks)
+	
+			# Save output
+			outfile = 'splash_' + image_path_base_noext + '.png'
+			skimage.io.imsave(outfile, splash)
+
 		else:
-			print("INFO: No object mask found for image %s..." % image)
+			print("INFO: No object mask found for image %s ..." % image_path_base)
 			continue
 		
 
