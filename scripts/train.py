@@ -342,7 +342,8 @@ def test(model):
 
 				# Color mask pixels with red
 				image_masked= np.copy(image)
-				image_masked[mask_merged_chan3]= [255,0,0]
+				#image_masked[mask_merged_chan3]= [255,0,0]
+				image_masked[np.where((mask_merged_chan3==[True,True,True]).all(axis=2))]=[255,0,0]
 				
 				# Save output
 				outfile = 'recmask_' + image_path_base_noext + '.png'
