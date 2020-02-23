@@ -338,7 +338,7 @@ def test(model):
 
 				# Color mask pixels with red
 				image_masked= np.copy(image)
-				image_masked[mask_merged]= [255,0,0]
+				image_masked[np.broadcast_to(mask_merged,image_masked.shape)]= [255,0,0]
 				
 				# Save output
 				outfile = 'recmask_' + image_path_base_noext + '.png'
