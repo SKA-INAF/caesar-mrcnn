@@ -322,7 +322,7 @@ def test(model):
 					continue
 
 				n_mask_true+= counts
-				print("--> Printing mask no. %s " % (str(i+1)))
+				print("--> Printing mask no. %s (true counts=%d)" % (str(i+1),counts))
 				print(mask_data)
 				
 			if n_mask_true>0:
