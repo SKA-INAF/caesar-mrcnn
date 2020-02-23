@@ -319,7 +319,7 @@ def test(model):
 				print(mask_data)
 				
 			# Color splash
-			splash = color_splash(image, masks)
+			splash = color_splash(image, mask)
 	
 			# Save output
 			outfile = 'splash_' + image_path_base_noext + '.png'
