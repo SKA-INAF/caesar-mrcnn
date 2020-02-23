@@ -332,13 +332,17 @@ def test(model):
 			if n_mask_true>0:
 				# Collapse mask in one layer
 				mask_merged = (np.sum(mask, -1, keepdims=True) >= 1)
+				mask_merged_chan3= np.broadcast_to(mask_merged,image_masked.shape)
 				print("mask_merged shape")
 				print(mask_merged.shape)
 				print(mask_merged)
+				print("mask_merged_chan3 shape")
+				print(mask_merged_chan3.shape)
+				print(mask_merged_chan3)
 
 				# Color mask pixels with red
 				image_masked= np.copy(image)
-				image_masked[np.broadcast_to(mask_merged,image_masked.shape)]= [255,0,0]
+				image_masked[mask_merged_chan3]= [255,0,0]
 				
 				# Save output
 				outfile = 'recmask_' + image_path_base_noext + '.png'
