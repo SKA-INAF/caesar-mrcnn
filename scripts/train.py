@@ -191,6 +191,24 @@ class SidelobeDataset(utils.Dataset):
 				)
 
 
+	def load_gt_mask(self, image_id):
+		""" Load gt mask """
+
+		# Read filename
+		info = self.image_info[image_id]
+		filename= info["path_mask"]
+		class_id= info["class_id"]
+
+		# Read mask
+		data, header= utils.read_fits(filename,stretch=False,normalize=False,convertToRGB=False)
+		data= data.astype(np.bool)
+
+		mask = np.zeros([height,width,1],dtype=np.bool)
+		mask[:,:,0]= data
+	
+		return mask
+
+
 	def load_mask(self, image_id):
 		""" Generate instance masks for an image.
 				Returns:
@@ -303,7 +321,7 @@ def test(model):
 		image_path_base_noext= os.path.splitext(image_path_base)[0]		
 
 		# - Load mask
-		mask_gt= dataset.load_mask(image_id)
+		mask_gt= dataset.load_mask_gt(image_id)
 		print("mask_gt shape")
 		print(mask_gt.shape)
 
