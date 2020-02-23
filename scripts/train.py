@@ -332,6 +332,8 @@ def test(model):
 			if n_mask_true>0:
 				# Collapse mask in one layer
 				mask_merged = (np.sum(mask, -1, keepdims=True) >= 1)
+				print("mask_merged shape")
+				print(mask_merged.shape)
 
 				# Color mask pixels with red
 				image_masked= np.copy(image)
