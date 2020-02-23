@@ -303,8 +303,11 @@ def test(model):
 		image_path_base_noext= os.path.splitext(image_path_base)[0]		
 
 		# - Load mask
-		# ...
-		# ...		
+		mask_gt= dataset.load_mask(image_id)
+		image_masked_gt= np.copy(image)
+		image_masked_gt[mask_gt]= [255,0,0]
+		outfile = 'gtmask_' + image_path_base_noext + '.png'
+		skimage.io.imsave(outfile, image_masked_gt)
 
 		# Detect objects
 		r = model.detect([image], verbose=0)[0]
@@ -326,12 +329,16 @@ def test(model):
 				print(mask_data)
 				
 			if n_mask_true>0:
-				# Color splash
-				splash = color_splash(image, mask)
-	
+				# Collapse mask in one layer
+				mask_merged = (np.sum(mask, -1, keepdims=True) >= 1)
+
+				# Color mask pixels with red
+				image_masked= np.copy(image)
+				image_masked[mask_merged]= [255,0,0]
+				
 				# Save output
-				outfile = 'splash_' + image_path_base_noext + '.png'
-				skimage.io.imsave(outfile, splash)
+				outfile = 'recmask_' + image_path_base_noext + '.png'
+				skimage.io.imsave(outfile, image_masked)
 
 		else:
 			print("INFO: No object mask found for image %s ..." % image_path_base)
