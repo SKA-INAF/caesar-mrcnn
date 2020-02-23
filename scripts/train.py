@@ -201,8 +201,10 @@ class SidelobeDataset(utils.Dataset):
 
 		# Read mask
 		data, header= utils.read_fits(filename,stretch=False,normalize=False,convertToRGB=False)
+		height= data.shape[0]
+		width= data.shape[1]
 		data= data.astype(np.bool)
-
+		
 		mask = np.zeros([height,width,1],dtype=np.bool)
 		mask[:,:,0]= data
 	
