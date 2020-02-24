@@ -313,6 +313,59 @@ def train(model,nepochs=10,nthreads=1):
 	)
 
 
+def test2(model):
+	""" Test the model on input dataset """    
+	dataset = SidelobeDataset()
+	dataset.load_dataset(args.dataset)
+	dataset.prepare()
+
+	for index, image_id in enumerate(dataset.image_ids):
+		# - Load image
+		image = dataset.load_image(image_id)
+		image_path = dataset.image_info[index]['path']
+		image_path_base= os.path.basename(image_path)
+		image_path_base_noext= os.path.splitext(image_path_base)[0]		
+
+		# - Load mask
+		mask_gt= dataset.load_gt_mask(image_id)
+
+		mask_gt_chan3= np.broadcast_to(mask_gt,image.shape)
+		image_masked_gt= np.copy(image)
+		image_masked_gt[np.where((mask_gt_chan3==[True,True,True]).all(axis=2))]=[255,255,0]
+
+		outfile = 'gtmask_' + image_path_base_noext + '.png'
+		skimage.io.imsave(outfile, image_masked_gt)
+
+		# - Extract true bounding box from true mask		
+		bboxes_gt= utils.extract_bboxes(mask_gt)
+
+		# Detect objects
+		r = model.detect([image], verbose=0)[0]
+		mask= r['masks']
+		bboxes= r['rois']
+		##bboxes= utils.extract_bboxes(mask)
+		class_labels= r['class_ids']
+		nobjects= mask.shape[-1]
+		if nobjects <= 0:
+			print("INFO: No object mask found for image %s ..." % image_path_base)
+			continue	
+		
+		# Save image with masks
+		outfile =  'out_' + image_path_base_noext + '.png'	
+		visualize.display_instances(
+			image, 
+			r['rois'], 
+			r['masks'], 
+			r['class_ids'],
+			dataset.class_names, 
+			r['scores'],
+			show_bbox=True, 
+			show_mask=True,
+			title="Predictions"
+		)
+		plt.savefig(outfile)
+
+
 def test(model):
 	""" Test the model on input dataset """    
 	dataset = SidelobeDataset()
@@ -328,8 +381,6 @@ def test(model):
 
 		# - Load mask
 		mask_gt= dataset.load_gt_mask(image_id)
-		#mask_gt_orig= dataset.load_mask(image_id)
-		#mask_gt= (np.sum(mask_gt_orig, -1, keepdims=True) >= 1)
 		print("mask_gt shape")
 		print(mask_gt.shape)
 
@@ -348,7 +399,7 @@ def test(model):
 		r = model.detect([image], verbose=0)[0]
 		mask= r['masks']
 		bboxes= r['rois']
-		#bboxes= utils.extract_bboxes(mask)
+		##bboxes= utils.extract_bboxes(mask)
 		class_labels= r['class_ids']
 		nobjects= mask.shape[-1]
 		if nobjects <= 0:
@@ -634,7 +685,8 @@ if __name__ == '__main__':
 	if args.command == "train":
 		train(model,args.nepochs,args.nthreads)
 	elif args.command == "test":
-		test(model)	
+		#test(model)	
+		test2(model)	
 	elif args.command == "splash":
 		detect_and_color_splash(model, image_path=args.image)
 	else:
