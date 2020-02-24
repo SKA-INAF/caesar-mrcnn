@@ -72,6 +72,8 @@ class SidelobeConfig(Config):
 
 	# Number of classes (including background)
 	NUM_CLASSES = 1 + 1  # Background + sidelobes
+	CLASS_COLORS = ['black','red']
+	CLASS_LABELS = ['bkg','sidelobe']
 
 	# Number of training steps per epoch
 	STEPS_PER_EPOCH = 1000
@@ -323,7 +325,9 @@ def test(model):
 		image_path_base_noext= os.path.splitext(image_path_base)[0]		
 
 		# - Load mask
-		mask_gt= dataset.load_gt_mask(image_id)
+		#mask_gt= dataset.load_gt_mask(image_id)
+		mask_gt_orig= dataset.load_mask(image_id)
+		mask_gt= (np.sum(mask_gt, -1, keepdims=True) >= 1)
 		print("mask_gt shape")
 		print(mask_gt.shape)
 
@@ -336,49 +340,127 @@ def test(model):
 		outfile = 'gtmask_' + image_path_base_noext + '.png'
 		skimage.io.imsave(outfile, image_masked_gt)
 
+		# - Extract true bounding box from true mask		
+		bboxes_gt= utils.extract_bboxes(mask_gt_orig)
+
 		# Detect objects
 		r = model.detect([image], verbose=0)[0]
 		mask= r['masks']
-        
-		# Create regions from detections
-		if mask.shape[-1] > 0:
-			print("INFO: Mask found for image %s ..." % image_path_base)
-
-			n_mask_true= 0
-			for i in range(0,mask.shape[-1]):
-				mask_data = mask[:,:,i]
-				counts= np.count_nonzero(mask_data)
-				if counts<=0:
-					continue
-
-				n_mask_true+= counts
-				print("--> Printing mask no. %s (true counts=%d)" % (str(i+1),counts))
-				print(mask_data)
-				
-			if n_mask_true>0:
-				# Collapse mask in one layer
-				mask_merged = (np.sum(mask, -1, keepdims=True) >= 1)
-				mask_merged_chan3= np.broadcast_to(mask_merged,image.shape)
-				print("mask_merged shape")
-				print(mask_merged.shape)
-				print(mask_merged)
-				print("mask_merged_chan3 shape")
-				print(mask_merged_chan3.shape)
-				print(mask_merged_chan3)
-
-				# Color mask pixels with red
-				image_masked= np.copy(image)
-				#image_masked[mask_merged_chan3]= [255,0,0]
-				image_masked[np.where((mask_merged_chan3==[True,True,True]).all(axis=2))]=[255,0,0]
-				
-				# Save output
-				outfile = 'recmask_' + image_path_base_noext + '.png'
-				skimage.io.imsave(outfile, image_masked)
-
-		else:
+		bboxes= r['rois']
+		class_labels= r['class_ids']
+		nobjects= mask.shape[-1]
+		if nobjects <= 0:
 			print("INFO: No object mask found for image %s ..." % image_path_base)
-			continue
+			continue	
 		
+		
+		# - Count if there are objects (=1) in mask
+		print("INFO: #%d detections found for image %s ..." % (nobjects,image_path_base))
+		n_mask_true= 0
+		for i in range(0,nobjects):
+			mask_data = mask[:,:,i]
+			counts= np.count_nonzero(mask_data)
+			if counts<=0:
+				continue
+
+			n_mask_true+= counts
+			print("--> Printing mask no. %s (true counts=%d)" % (str(i+1),counts))
+			print(mask_data)
+
+		if n_mask_true<=0:
+			print("WARN: Counts of true values in mask should be >0 at this stage, skip data...")
+			continue
+
+			
+		# Collapse mask in one layer
+		mask_merged = (np.sum(mask, -1, keepdims=True) >= 1)
+		mask_merged_chan3= np.broadcast_to(mask_merged,image.shape)
+		#print("mask_merged shape")
+		#print(mask_merged.shape)
+		#print(mask_merged)
+		#print("mask_merged_chan3 shape")
+		#print(mask_merged_chan3.shape)
+		#print(mask_merged_chan3)
+
+		# Color mask pixels with red
+		image_masked= np.copy(image)
+		image_masked[np.where((mask_merged_chan3==[True,True,True]).all(axis=2))]=[255,0,0]
+				
+		# Draw map and save
+		outfile = 'recmask_' + image_path_base_noext + '.png'
+		#skimage.io.imsave(outfile, image_masked)
+		draw(image,bboxes_gt,bboxes,class_labels,outfile)
+
+
+def draw(image,bboxes_gt,bboxes_pred,label_ids,outfile):
+	""" Draw image with test results """
+		
+	######################
+	##    DRAW FIGURE
+	######################
+	fig = plt.figure()
+	
+	# - Add axes and set them not visible
+	ax = plt.axes([0,0,1,1], frameon=False)
+	#ax = fig.add_axes([0,0,1,1])
+	ax.get_xaxis().set_visible(False)
+	ax.get_yaxis().set_visible(False)
+
+	# Even though our axes (plot region) are set to cover the whole image with [0,0,1,1],
+	# by default they leave padding between the plotted data and the frame. We use tigher=True
+	# to make sure the data gets scaled to the full extents of the axes.
+	plt.autoscale(tight=True)
+
+	# - Draw image
+	plt.imshow(image,cmap='gray')
+
+	# - Add true bounding boxes to the image
+	nobjects_true= bboxes_gt.shape[-1]
+	for index in nobjects_true:
+		bbox= bboxes_gt[index]
+		x1= bbox[0]
+		y1= bbox[1]
+		x2= bbox[2]
+		y2= bbox[3]
+		width= np.abs(x2-x1)
+		height= np.abs(y2-y1)
+		rect = patches.Rectangle((x1,y1), width, height, edgecolor = 'yellow', facecolor = 'none')
+		ax.add_patch(rect)
+
+	# - Add predicted bounding boxes to the image
+	nobjects_pred= bboxes_pred.shape[-1]
+	for index in nobjects_true:
+		bbox= bboxes_gt[index]
+		x1= bbox[0]
+		y1= bbox[1]
+		x2= bbox[2]
+		y2= bbox[3]
+		width= np.abs(x2-x1)
+		height= np.abs(y2-y1)
+		rect = patches.Rectangle((x1,y1), width, height, edgecolor = 'yellow', facecolor = 'none')
+		ax.add_patch(rect)
+		label_id= label_ids[index]
+		label= config.CLASS_LABELS[label_id]
+		color= config.CLASS_COLORS[label_id]
+		ax.annotate(label, xy=(xmin+0.5*width,ymax-10),color=color)
+
+	# - Save annotated image to file
+	plt.subplots_adjust(0,0,1,1,0,0)
+	for ax in fig.axes:
+		ax.axis('off')
+		ax.margins(0,0)
+		ax.set_frame_on(False)
+		ax.xaxis.set_major_locator(plt.NullLocator())
+		ax.yaxis.set_major_locator(plt.NullLocator())
+
+	plt.margins(0,0)
+	plt.savefig(outfile, bbox_inches='tight',pad_inches = 0)
+	
+	# - Save array to image file
+	#plt.imsave(outfile,image)
+	
+	# - Close figure
+	plt.close()
 
 
 def color_splash(image, mask):
