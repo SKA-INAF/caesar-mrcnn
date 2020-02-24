@@ -325,9 +325,9 @@ def test(model):
 		image_path_base_noext= os.path.splitext(image_path_base)[0]		
 
 		# - Load mask
-		#mask_gt= dataset.load_gt_mask(image_id)
-		mask_gt_orig= dataset.load_mask(image_id)
-		mask_gt= (np.sum(mask_gt_orig, -1, keepdims=True) >= 1)
+		mask_gt= dataset.load_gt_mask(image_id)
+		#mask_gt_orig= dataset.load_mask(image_id)
+		#mask_gt= (np.sum(mask_gt_orig, -1, keepdims=True) >= 1)
 		print("mask_gt shape")
 		print(mask_gt.shape)
 
@@ -341,7 +341,7 @@ def test(model):
 		skimage.io.imsave(outfile, image_masked_gt)
 
 		# - Extract true bounding box from true mask		
-		bboxes_gt= utils.extract_bboxes(mask_gt_orig)
+		bboxes_gt= utils.extract_bboxes(mask_gt)
 
 		# Detect objects
 		r = model.detect([image], verbose=0)[0]
