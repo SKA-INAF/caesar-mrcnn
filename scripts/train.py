@@ -45,6 +45,7 @@ ROOT_DIR = os.getcwd()
 sys.path.append(ROOT_DIR)  # To find local version of the library
 from mrcnn.config import Config
 from mrcnn import model as modellib, utils
+from mrcnn import visualize
 
 # Path to trained weights file
 #COCO_WEIGHTS_PATH = os.path.join(ROOT_DIR, "mask_rcnn_coco.h5")
@@ -402,6 +403,22 @@ def test(model):
 		# Draw map with bounding boxes
 		outfile =  'bboxes_' + image_path_base_noext + '.png'	
 		draw(image,bboxes_gt,bboxes_pred,class_labels,outfile)
+
+
+		# Save image with masks
+		outfile =  'out_' + image_path_base_noext + '.png'	
+		visualize.display_instances(
+			image, 
+			r['rois'], 
+			r['masks'], 
+			r['class_ids'],
+			dataset.class_names, 
+			r['scores'],
+			show_bbox=True, 
+			show_mask=True,
+			title="Predictions"
+		)
+		plt.savefig(outfile)
 
 
 def draw(image,bboxes_gt,bboxes_pred,label_ids,outfile):
