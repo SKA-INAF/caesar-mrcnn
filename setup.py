@@ -68,5 +68,5 @@ setup(
 	long_description=read('README.md'),
 	packages=['mrcnn'],
 	install_requires=reqs,
-	scripts=['scripts/train.py'],
+	scripts=['scripts/train.py','scripts/train_all.py'],
 )
