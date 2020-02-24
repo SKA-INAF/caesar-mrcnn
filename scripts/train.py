@@ -425,7 +425,7 @@ def draw(image,bboxes_gt,bboxes_pred,label_ids,outfile):
 	plt.imshow(image,cmap='gray')
 
 	# - Add true bounding boxes to the image
-	nobjects_true= bboxes_gt.shape[-1]
+	nobjects_true= bboxes_gt.shape[0]
 	for index in range(nobjects_true):
 		x1= bboxes_gt[index][0]
 		y1= bboxes_gt[index][1]
@@ -437,7 +437,7 @@ def draw(image,bboxes_gt,bboxes_pred,label_ids,outfile):
 		ax.add_patch(rect)
 
 	# - Add predicted bounding boxes to the image
-	nobjects_pred= bboxes_pred.shape[-1]
+	nobjects_pred= bboxes_pred.shape[0]
 	for index in range(nobjects_pred):
 		label_id= label_ids[index]
 		label= config.CLASS_LABELS[label_id]
