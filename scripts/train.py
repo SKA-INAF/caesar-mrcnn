@@ -401,7 +401,7 @@ def test(model):
 		
 		# Draw map with bounding boxes
 		outfile =  'bboxes_' + image_path_base_noext + '.png'	
-		draw(image,bboxes_gt,bboxes,class_labels,outfile)
+		draw(image,bboxes_gt,bboxes_pred,class_labels,outfile)
 
 
 def draw(image,bboxes_gt,bboxes_pred,label_ids,outfile):
@@ -449,10 +449,15 @@ def draw(image,bboxes_gt,bboxes_pred,label_ids,outfile):
 
 	# - Add predicted bounding boxes to the image
 	nobjects_pred= bboxes_pred.shape[0]
+	nlabels= label_ids.shape[0]
 	for index in range(nobjects_pred):
-		label_id= label_ids[index]
-		label= config.CLASS_LABELS[label_id]
-		color= config.CLASS_COLORS[label_id]
+		if index<nlabels:
+			label_id= label_ids[index]
+			label= config.CLASS_LABELS[label_id]
+			color= config.CLASS_COLORS[label_id]
+		else:
+			label= ''
+			color= 'black'
 		y1= bboxes_pred[index][0]
 		x1= bboxes_pred[index][1]
 		y2= bboxes_pred[index][2]
