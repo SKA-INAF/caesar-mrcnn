@@ -327,7 +327,7 @@ def test(model):
 		# - Load mask
 		#mask_gt= dataset.load_gt_mask(image_id)
 		mask_gt_orig= dataset.load_mask(image_id)
-		mask_gt= (np.sum(mask_gt, -1, keepdims=True) >= 1)
+		mask_gt= (np.sum(mask_gt_orig, -1, keepdims=True) >= 1)
 		print("mask_gt shape")
 		print(mask_gt.shape)
 
