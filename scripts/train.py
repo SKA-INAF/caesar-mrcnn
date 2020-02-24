@@ -450,7 +450,7 @@ def draw(image,bboxes_gt,bboxes_pred,label_ids,outfile):
 		height= np.abs(y2-y1)
 		rect = patches.Rectangle((x1,y1), width, height, edgecolor = color, facecolor = 'none')
 		ax.add_patch(rect)
-		ax.annotate(label, xy=(xmin+0.5*width,ymax-10),color=color)
+		ax.annotate(label, xy=(x1+0.5*width,y2-10),color=color)
 
 	# - Save annotated image to file
 	plt.subplots_adjust(0,0,1,1,0,0)
