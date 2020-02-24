@@ -430,10 +430,10 @@ def draw(image,bboxes_gt,bboxes_pred,label_ids,outfile):
 	# - Add true bounding boxes to the image
 	nobjects_true= bboxes_gt.shape[0]
 	for index in range(nobjects_true):
-		x1= bboxes_gt[index][0]
-		y1= bboxes_gt[index][1]
-		x2= bboxes_gt[index][2]
-		y2= bboxes_gt[index][3]
+		y1= bboxes_gt[index][0]
+		x1= bboxes_gt[index][1]
+		y2= bboxes_gt[index][2]
+		x2= bboxes_gt[index][3]
 		width= np.abs(x2-x1)
 		height= np.abs(y2-y1)
 		rect = patches.Rectangle((x1,y1), width, height, edgecolor = 'yellow', facecolor = 'none')
@@ -445,10 +445,10 @@ def draw(image,bboxes_gt,bboxes_pred,label_ids,outfile):
 		label_id= label_ids[index]
 		label= config.CLASS_LABELS[label_id]
 		color= config.CLASS_COLORS[label_id]
-		x1= bboxes_pred[index][0]
-		y1= bboxes_pred[index][1]
-		x2= bboxes_pred[index][2]
-		y2= bboxes_pred[index][3]
+		y1= bboxes_pred[index][0]
+		x1= bboxes_pred[index][1]
+		y2= bboxes_pred[index][2]
+		x2= bboxes_pred[index][3]
 		width= np.abs(x2-x1)
 		height= np.abs(y2-y1)
 		rect = patches.Rectangle((x1,y1), width, height, edgecolor = color, facecolor = 'none')
