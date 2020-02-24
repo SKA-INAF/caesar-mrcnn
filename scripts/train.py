@@ -391,7 +391,7 @@ def test(model):
 				
 		# Save predicted mask
 		outfile= 'recmask_' + image_path_base_noext + '.png'
-		skimage.io.imsave(outfile,mask_merged_chan3.astype(np.uint8))
+		skimage.io.imsave(outfile,255*mask_merged_chan3.astype(np.uint8))
 
 		# Save splash map
 		outfile = 'splash_' + image_path_base_noext + '.png'
