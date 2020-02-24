@@ -396,6 +396,15 @@ def test(model):
 def draw(image,bboxes_gt,bboxes_pred,label_ids,outfile):
 	""" Draw image with test results """
 		
+	print("image shape")
+	print(image.shape)
+	print("bboxes_gt shape")
+	print(bboxes_gt.shape)
+	print("bboxes_pred shape")
+	print(bboxes_pred.shape)
+	print("label_ids shape")
+	print(label_ids.shape)
+
 	######################
 	##    DRAW FIGURE
 	######################
