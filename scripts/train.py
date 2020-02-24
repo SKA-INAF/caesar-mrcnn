@@ -377,12 +377,15 @@ def test(model):
 		# Collapse mask in one layer
 		mask_merged = (np.sum(mask, -1, keepdims=True) >= 1)
 		mask_merged_chan3= np.broadcast_to(mask_merged,image.shape)
-		#print("mask_merged shape")
-		#print(mask_merged.shape)
-		#print(mask_merged)
-		#print("mask_merged_chan3 shape")
-		#print(mask_merged_chan3.shape)
-		#print(mask_merged_chan3)
+
+		print("mask shape")
+		print(mask.shape)
+		print("mask_merged shape")
+		print(mask_merged.shape)
+		print(mask_merged)
+		print("mask_merged_chan3 shape")
+		print(mask_merged_chan3.shape)
+		print(mask_merged_chan3)
 
 		# Color mask pixels with red
 		image_masked= np.copy(image)
