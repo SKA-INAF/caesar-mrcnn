@@ -417,7 +417,7 @@ def draw(image,bboxes_gt,bboxes_pred,label_ids,outfile):
 
 	# - Add true bounding boxes to the image
 	nobjects_true= bboxes_gt.shape[-1]
-	for index in nobjects_true:
+	for index in range(nobjects_true):
 		bbox= bboxes_gt[index]
 		x1= bbox[0]
 		y1= bbox[1]
@@ -430,19 +430,19 @@ def draw(image,bboxes_gt,bboxes_pred,label_ids,outfile):
 
 	# - Add predicted bounding boxes to the image
 	nobjects_pred= bboxes_pred.shape[-1]
-	for index in nobjects_true:
-		bbox= bboxes_gt[index]
+	for index in range(nobjects_pred):
+		label_id= label_ids[index]
+		label= config.CLASS_LABELS[label_id]
+		color= config.CLASS_COLORS[label_id]
+		bbox= bboxes_pred[index]
 		x1= bbox[0]
 		y1= bbox[1]
 		x2= bbox[2]
 		y2= bbox[3]
 		width= np.abs(x2-x1)
 		height= np.abs(y2-y1)
-		rect = patches.Rectangle((x1,y1), width, height, edgecolor = 'yellow', facecolor = 'none')
+		rect = patches.Rectangle((x1,y1), width, height, edgecolor = color, facecolor = 'none')
 		ax.add_patch(rect)
-		label_id= label_ids[index]
-		label= config.CLASS_LABELS[label_id]
-		color= config.CLASS_COLORS[label_id]
 		ax.annotate(label, xy=(xmin+0.5*width,ymax-10),color=color)
 
 	# - Save annotated image to file
