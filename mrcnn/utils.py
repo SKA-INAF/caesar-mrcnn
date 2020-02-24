@@ -458,7 +458,7 @@ def resize_image(image, min_dim=None, max_dim=None, min_scale=None, mode="square
 
     # Resize image using bilinear interpolation
     if scale != 1:
-        print("DEBUG: Resizing image to size (%d,%d) (scale=%d)" % (round(h * scale).round(w * scale),scale))
+        print("DEBUG: Resizing image to size (%f,%f) (scale=%d)" % (round(h * scale).round(w * scale),scale))
         image = resize(image, (round(h * scale), round(w * scale)),
                        preserve_range=True)
 
