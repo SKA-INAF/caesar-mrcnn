@@ -347,7 +347,8 @@ def test(model):
 		# Detect objects
 		r = model.detect([image], verbose=0)[0]
 		mask= r['masks']
-		bboxes= r['rois']
+		#bboxes= r['rois']
+		bboxes= utils.extract_bboxes(mask)
 		class_labels= r['class_ids']
 		nobjects= mask.shape[-1]
 		if nobjects <= 0:
