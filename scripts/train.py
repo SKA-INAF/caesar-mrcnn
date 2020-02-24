@@ -382,10 +382,9 @@ def test(model):
 		print(mask.shape)
 		print("mask_merged shape")
 		print(mask_merged.shape)
-		print(mask_merged)
 		print("mask_merged_chan3 shape")
 		print(mask_merged_chan3.shape)
-		print(mask_merged_chan3)
+		
 
 		# Color mask pixels with red
 		image_masked= np.copy(image)
@@ -393,11 +392,11 @@ def test(model):
 				
 		# Save predicted mask
 		outfile= 'recmask_' + image_path_base_noext + '.png'
-		skimage.io.imsave(outfile, image_masked)
+		skimage.io.imsave(outfile,mask_merged_chan3.astype(np.uint8))
 
 		# Save splash map
 		outfile = 'splash_' + image_path_base_noext + '.png'
-		skimage.io.imsave(outfile, mask_merged_chan3)
+		skimage.io.imsave(outfile, image_masked)
 		
 		# Draw map with bounding boxes
 		outfile =  'bboxes_' + image_path_base_noext + '.png'	
