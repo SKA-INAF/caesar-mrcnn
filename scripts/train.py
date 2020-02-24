@@ -387,9 +387,12 @@ def test(model):
 		image_masked= np.copy(image)
 		image_masked[np.where((mask_merged_chan3==[True,True,True]).all(axis=2))]=[255,0,0]
 				
-		# Draw map and save
+		# Save splash map
 		outfile = 'recmask_' + image_path_base_noext + '.png'
-		#skimage.io.imsave(outfile, image_masked)
+		skimage.io.imsave(outfile, image_masked)
+		
+		# Draw map with bounding boxes
+		outfile =  'bboxes_' + image_path_base_noext + '.png'	
 		draw(image,bboxes_gt,bboxes,class_labels,outfile)
 
 
