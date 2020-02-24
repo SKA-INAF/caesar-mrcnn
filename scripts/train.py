@@ -346,8 +346,8 @@ def test(model):
 		# Detect objects
 		r = model.detect([image], verbose=0)[0]
 		mask= r['masks']
-		#bboxes= r['rois']
-		bboxes= utils.extract_bboxes(mask)
+		bboxes= r['rois']
+		#bboxes= utils.extract_bboxes(mask)
 		class_labels= r['class_ids']
 		nobjects= mask.shape[-1]
 		if nobjects <= 0:
@@ -384,6 +384,8 @@ def test(model):
 		print("mask_merged_chan3 shape")
 		print(mask_merged_chan3.shape)
 		
+		# Extract bboxes from collapsed masks
+		bboxes_pred= utils.extract_bboxes(mask_merged)
 
 		# Color mask pixels with red
 		image_masked= np.copy(image)
