@@ -335,8 +335,7 @@ def test(model):
 		mask_gt_chan3= np.broadcast_to(mask_gt,image.shape)
 		image_masked_gt= np.copy(image)
 		print(image_masked_gt.shape)
-		#image_masked_gt[mask_gt==1]= [255,0,0]
-		image_masked_gt[np.where((mask_gt_chan3==[True,True,True]).all(axis=2))]=[255,0,0]
+		image_masked_gt[np.where((mask_gt_chan3==[True,True,True]).all(axis=2))]=[255,255,0]
 
 		outfile = 'gtmask_' + image_path_base_noext + '.png'
 		skimage.io.imsave(outfile, image_masked_gt)
