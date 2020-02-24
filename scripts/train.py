@@ -34,7 +34,8 @@ import datetime
 import numpy as np
 import skimage.draw
 from imgaug import augmenters as iaa
-
+import matplotlib.pyplot as plt
+from matplotlib import patches
 
 # Root directory of the project
 #ROOT_DIR = os.path.abspath("../../")
