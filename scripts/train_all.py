@@ -176,10 +176,10 @@ class SourceDataset(utils.Dataset):
 			'galaxy_C2': 3,
 			'galaxy_C3': 4,
 		}
-		self.add_class("sidelobe", 1, "sidelobe")
-		self.add_class("source", 2, "source")
-		self.add_class("galaxy_C2", 3, "galaxy_C2")
-		self.add_class("galaxy_C3", 4, "galaxy_C3")
+		self.add_class("sources", 1, "sidelobe")
+		self.add_class("sources", 2, "source")
+		self.add_class("sources", 3, "galaxy_C2")
+		self.add_class("sources", 4, "galaxy_C3")
 		 
 
 		# Read dataset
@@ -197,7 +197,8 @@ class SourceDataset(utils.Dataset):
 					class_id= class_id_map.get(class_name)					
 
 				self.add_image(
-        	class_name,
+        	#class_name,
+					"sources",
 					image_id=filename_base_noext,  # use file name as a unique image id
 					path=filename,
 					path_mask=filename_mask,
@@ -231,6 +232,11 @@ class SourceDataset(utils.Dataset):
 					masks: A bool array of shape [height, width, instance count] with one mask per instance.
 					class_ids: a 1D array of class IDs of the instance masks.
 		"""
+
+		# Check	
+		if self.image_info["source"] != "sources":
+			return super(self.__class__, self).load_mask(image_id)
+
 		# Set bitmap mask of shape [height, width, instance_count]
 		info = self.image_info[image_id]
 		filename= info["path_mask"]
@@ -265,8 +271,13 @@ class SourceDataset(utils.Dataset):
 	def image_reference(self, image_id):
 		""" Return the path of the image."""
 
-		info = self.image_info[image_id]
-		return info["path"]
+		#info = self.image_info[image_id]
+		#return info["path"]
+
+		if info["source"] == "sources":
+			return info["path"]
+		else:
+			super(self.__class__).image_reference(self, image_id)
 
 	
 def train(model,nepochs=10,nthreads=1):    
@@ -376,6 +387,7 @@ if __name__ == '__main__':
 	parser.add_argument('--logs', required=False,default=DEFAULT_LOGS_DIR,metavar="/path/to/logs/",help='Logs and checkpoints directory (default=logs/)')
 	parser.add_argument('--image', required=False,metavar="path or URL to image",help='Image to apply the color splash effect on')
 	parser.add_argument('--nepochs', required=False,default=10,type=int,metavar="Number of training epochs",help='Number of training epochs')
+	parser.add_argument('--epoch_length', required=False,default=10,type=int,metavar="Number of data batches per epoch",help='Number of data batches per epoch')
 	parser.add_argument('--weighttype', required=False,default='',metavar="Type of weights",help="Type of weights")
 	parser.add_argument('--nthreads', required=False,default=1,type=int,metavar="Number of worker threads",help="Number of worker threads")
 	
@@ -393,6 +405,7 @@ if __name__ == '__main__':
 	print("Dataset: ", args.dataset)
 	print("Logs: ", args.logs)
 	print("nEpochs: ",args.nepochs)
+	print("epoch_length: ",args.epoch_length)
 
 	# Configurations
 	if args.command == "train":
@@ -404,6 +417,9 @@ if __name__ == '__main__':
 			GPU_COUNT = 1
 			IMAGES_PER_GPU = 1
 		config = InferenceConfig()
+
+	config.STEPS_PER_EPOCH= args.epoch_length
+
 	config.display()
 
 	# Create model
@@ -417,7 +433,6 @@ if __name__ == '__main__':
 
 	# Load weights
 	print("Loading weights ", weights_path)
-	#if args.weights.lower() == "coco":
 	if args.weighttype.lower() == "coco":
 		# Exclude the last layers because they require a matching number of classes
 		model.load_weights(
