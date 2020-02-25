@@ -234,7 +234,7 @@ class SourceDataset(utils.Dataset):
 		"""
 
 		# Check	
-		if self.image_info["source"] != "sources":
+		if self.image_info[image_id]["source"] != "sources":
 			return super(self.__class__, self).load_mask(image_id)
 
 		# Set bitmap mask of shape [height, width, instance_count]
