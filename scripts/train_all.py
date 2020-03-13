@@ -46,6 +46,10 @@ from mrcnn.config import Config
 from mrcnn import model as modellib, utils
 from mrcnn import visualize
 
+## Import graphics modules
+import matplotlib.pyplot as plt
+from matplotlib import patches
+
 # Path to trained weights file
 #COCO_WEIGHTS_PATH = os.path.join(ROOT_DIR, "mask_rcnn_coco.h5")
 COCO_WEIGHTS_PATH = '/home/riggi/Data/MLData/NNWeights/mask_rcnn_coco.h5'
