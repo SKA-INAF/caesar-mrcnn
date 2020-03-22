@@ -398,6 +398,9 @@ if __name__ == '__main__':
 	parser.add_argument('--image', required=False,metavar="path or URL to image",help='Image to apply the color splash effect on')
 	parser.add_argument('--nepochs', required=False,default=10,type=int,metavar="Number of training epochs",help='Number of training epochs')
 	parser.add_argument('--epoch_length', required=False,default=10,type=int,metavar="Number of data batches per epoch",help='Number of data batches per epoch')
+	parser.add_argument('--nvalidation_steps', required=False,default=50,type=int,metavar="Number of validation steps per epoch",help='Number of validation steps per epoch')
+	parser.add_argument('--ngpu', required=False,default=1,type=int,metavar="Number of GPUs",help='Number of GPUs')
+	parser.add_argument('--nimg_per_gpu', required=False,default=1,type=int,metavar="Number of images per gpu",help='Number of images per gpu')
 	parser.add_argument('--weighttype', required=False,default='',metavar="Type of weights",help="Type of weights")
 	parser.add_argument('--nthreads', required=False,default=1,type=int,metavar="Number of worker threads",help="Number of worker threads")
 	
@@ -416,6 +419,10 @@ if __name__ == '__main__':
 	print("Logs: ", args.logs)
 	print("nEpochs: ",args.nepochs)
 	print("epoch_length: ",args.epoch_length)
+	print("nvalidation_steps: ",args.nvalidation_steps)
+	print("ngpu: ",args.ngpu)
+	print("nimg_per_gpu: ",args.nimg_per_gpu)
+
 
 	# Configurations
 	if args.command == "train":
@@ -428,8 +435,12 @@ if __name__ == '__main__':
 			IMAGES_PER_GPU = 1
 		config = InferenceConfig()
 
-	config.STEPS_PER_EPOCH= args.epoch_length
-
+	config.GPU_COUNT = args.ngpu
+	config.IMAGES_PER_GPU = args.nimg_per_gpu
+	config.VALIDATION_STEPS = max(1, args.nvalidation_steps // (config.IMAGES_PER_GPU*config.GPU_COUNT)) # 200 validation/test images
+	config.STEPS_PER_EPOCH = ((args.epoch_length - args.nvalidation_steps) // (config.IMAGES_PER_GPU*config.GPU_COUNT)) #16439 total images
+	#config.STEPS_PER_EPOCH= args.epoch_length
+	
 	config.display()
 
 	# Create model
