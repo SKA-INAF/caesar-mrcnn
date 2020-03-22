@@ -72,7 +72,7 @@ class SDetectorConfig(Config):
 	NAME = "sources"
 
 	# NUMBER OF GPUs to use. When using only a CPU, this needs to be set to 1.
-  GPU_COUNT = 1
+	GPU_COUNT = 1
 
 	# We use a GPU with 12GB memory, which can fit two images.
 	# Adjust down if you use a smaller GPU.
