@@ -33,6 +33,7 @@ import json
 import datetime
 import numpy as np
 import skimage.draw
+import tensorflow as tf
 from imgaug import augmenters as iaa
 
 
