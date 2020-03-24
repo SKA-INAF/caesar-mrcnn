@@ -427,6 +427,11 @@ if __name__ == '__main__':
 	# Configurations
 	if args.command == "train":
 		config = SDetectorConfig()
+		config.GPU_COUNT = args.ngpu
+		config.IMAGES_PER_GPU = args.nimg_per_gpu
+		config.VALIDATION_STEPS = max(1, args.nvalidation_steps // (config.IMAGES_PER_GPU*config.GPU_COUNT)) # 200 validation/test images
+		config.STEPS_PER_EPOCH = ((args.epoch_length - args.nvalidation_steps) // (config.IMAGES_PER_GPU*config.GPU_COUNT)) #16439 total images
+		#config.STEPS_PER_EPOCH= args.epoch_length
 	else:
 		class InferenceConfig(SDetectorConfig):
 			# Set batch size to 1 since we'll be running inference on
@@ -434,12 +439,9 @@ if __name__ == '__main__':
 			GPU_COUNT = 1
 			IMAGES_PER_GPU = 1
 		config = InferenceConfig()
+		config.GPU_COUNT = GPU_COUNT
+		config.IMAGES_PER_GPU = IMAGES_PER_GPU
 
-	config.GPU_COUNT = args.ngpu
-	config.IMAGES_PER_GPU = args.nimg_per_gpu
-	config.VALIDATION_STEPS = max(1, args.nvalidation_steps // (config.IMAGES_PER_GPU*config.GPU_COUNT)) # 200 validation/test images
-	config.STEPS_PER_EPOCH = ((args.epoch_length - args.nvalidation_steps) // (config.IMAGES_PER_GPU*config.GPU_COUNT)) #16439 total images
-	#config.STEPS_PER_EPOCH= args.epoch_length
 	
 	config.display()
 
