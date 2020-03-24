@@ -439,8 +439,6 @@ if __name__ == '__main__':
 			GPU_COUNT = 1
 			IMAGES_PER_GPU = 1
 		config = InferenceConfig()
-		config.GPU_COUNT = GPU_COUNT
-		config.IMAGES_PER_GPU = IMAGES_PER_GPU
 
 	
 	config.display()
