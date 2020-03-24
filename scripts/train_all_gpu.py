@@ -447,7 +447,13 @@ if __name__ == '__main__':
 	if args.command == "train":
 		model = modellib.MaskRCNN(mode="training", config=config,model_dir=args.logs)
 	else:
-		model = modellib.MaskRCNN(mode="inference", config=config,model_dir=args.logs)
+		# Device to load the neural network on.
+		# Useful if you're training a model on the same 
+		# machine, in which case use CPU and leave the
+		# GPU for training.
+		DEVICE = "/cpu:0"  # /cpu:0 or /gpu:0
+		with tf.device(DEVICE):
+			model = modellib.MaskRCNN(mode="inference", config=config,model_dir=args.logs)
 
 	# Select weights file to load
 	weights_path = args.weights
