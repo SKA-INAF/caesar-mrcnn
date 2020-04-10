@@ -92,6 +92,57 @@ def compute_iou(box, boxes, box_area, boxes_area):
     return iou
 
 
+
+## ==================================
+## ==    COMPUTE IOU
+## ==================================
+def get_iou(bb1, bb2):
+    """ Calculate the Intersection over Union (IoU) of two bounding boxes """
+
+    bb1_x1= bb1[1]
+    bb1_y1= bb1[0]
+				 
+    bb1_x2= bb1[3]  
+    bb1_y2= bb1[2]
+ 	
+    bb2_x1= bb2[1]
+    bb2_y1= bb2[0]
+		
+    bb2_x2= bb2[3]
+    bb2_y2= bb2[2]
+ 	
+    assert bb1_x1 < bb1_x2
+    assert bb1_y1 < bb1_y2
+    assert bb2_x1 < bb2_x2
+    assert bb2_y1 < bb2_y2
+
+    # determine the coordinates of the intersection rectangle
+    x_left = max(bb1_x1, bb2_x1)
+    y_top = max(bb1_y1, bb2_y1)
+    x_right = min(bb1_x2, bb2_x2)
+    y_bottom = min(bb1_y2, bb2_y2)
+
+    if x_right < x_left or y_bottom < y_top:
+       return 0.0
+
+    # The intersection of two axis-aligned bounding boxes is always an
+    # axis-aligned bounding box
+    intersection_area = (x_right - x_left) * (y_bottom - y_top)
+
+    # compute the area of both AABBs
+    bb1_area = (bb1_x2 - bb1_x1) * (bb1_y2 - bb1_y1)
+    bb2_area = (bb2_x2 - bb2_x1) * (bb2_y2 - bb2_y1)
+
+    # compute the intersection over union by taking the intersection
+    # area and dividing it by the sum of prediction + ground-truth
+    # areas - the interesection area
+    iou = intersection_area / float(bb1_area + bb2_area - intersection_area)
+    assert iou >= 0.0
+    assert iou <= 1.0
+
+    return iou
+
+
 def compute_overlaps(boxes1, boxes2):
     """Computes IoU overlaps between two sets of boxes.
     boxes1, boxes2: [N, (y1, x1, y2, x2)].
