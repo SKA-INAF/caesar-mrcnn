@@ -4,24 +4,33 @@ import sys
 import json
 import time
 import datetime
+import logging
 import numpy as np
-import skimage.draw
-import skimage.measure
-from skimage.measure import find_contours
+
 
 # Import Mask RCNN
+
 from mrcnn.config import Config
 from mrcnn import model as modellib, utils
 from mrcnn import visualize
 from mrcnn.graph import Graph
 
+
+# Import image modules
+import skimage.draw
+import skimage.measure
+from skimage.measure import find_contours
+
+
 ## Import graphics modules
 import matplotlib
-matplotlib.use('Agg')
-#matplotlib.use('TkAgg')
+#matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib import patches, lines
 from matplotlib.patches import Polygon
+
+## Get logger
+logger = logging.getLogger(__name__)
 
 
 # ========================
@@ -30,7 +39,7 @@ from matplotlib.patches import Polygon
 class ModelTester(object):
 	""" Define analyzer object """
 
-	def __init__(self,dataset,model,config):
+	def __init__(self,model,config,dataset):
 		""" Return an analyzer object """
 
 		self.dataset= dataset
@@ -61,14 +70,14 @@ class ModelTester(object):
 	
 		# - Loop over dataset and inspect results
 		nimg= 0
-		print("INFO: Processing up to %d images " % (self.n_max_img))
+		logger.info("Processing up to %d images " % (self.n_max_img))
 
 		for index, image_id in enumerate(self.dataset.image_ids):
 			nimg+= 1
 		
 			# - Check if stop inspection
 			if self.n_max_img>0 and nimg>=self.n_max_img:
-				print("INFO: Max number of images to inspect reached, stop here.")
+				logger.info("Max number of images to inspect reached, stop here.")
 				break
 
 			# - Inspect results	for current image
@@ -76,23 +85,23 @@ class ModelTester(object):
 			image_path_base= os.path.basename(image_path)
 
 			# - Initialize the analyzer
-			analyzer= Analyzer(self.dataset,self.model,self.config)
+			analyzer= Analyzer(self.model,self.config,self.dataset)
 			analyzer.score_thr= self.score_thr
 			analyzer.iou_thr= self.iou_thr
 			
 			# - Inspecting results
-			print("INFO: Inspecting results for image %s ..." % image_path_base)
+			logger.info("Inspecting results for image %s ..." % image_path_base)
 			status= analyzer.inspect_results(image_id,image_path)
 			if status<0:
-				print("ERROR: Failed to analyze results for image %s ..." % image_path_base)
+				logger.error("Failed to analyze results for image %s ..." % image_path_base)
 				continue
 
 			# - Update performances
-			print("INFO: Updating test performances using results for image %s ..." % image_path_base)
+			logger.info("Updating test performances using results for image %s ..." % image_path_base)
 			self.update_performances(analyzer)
 			
 		# - Compute final results
-		print("INFO: Computing final performances ...")
+		logger.info("Computing final performances ...")
 		self.compute_performances()
 
 		return 0
@@ -163,7 +172,7 @@ class ModelTester(object):
 class Analyzer(object):
 	""" Define analyzer object """
 
-	def __init__(self,dataset,model,config):
+	def __init__(self,model,config,dataset=None):
 		""" Return an analyzer object """
 
 		# - Model
@@ -225,11 +234,22 @@ class Analyzer(object):
 			'galaxy_C3': (0,1,0),# green
 		}
 
+	def set_image_path(self,path):
+		""" Set image path """
+		self.image_path= path
+		self.image_path_base= os.path.basename(self.image_path)
+		self.image_path_base_noext= os.path.splitext(self.image_path_base)[0]
+
 	# =============================
 	# ==     GET DATA FROM MODEL
 	# =============================
 	def get_data(self):
 		""" Retrieve data from dataset & model """
+
+		# - Throw error if dataset is not given
+		if not self.dataset:
+			logger.error("No dataset present!")
+			return -1
 
 		# - Load image
 		self.image = self.dataset.load_image(self.image_id)
@@ -254,6 +274,50 @@ class Analyzer(object):
 		self.color_gt = self.class_color_map[self.label_gt]
 		self.caption_gt = self.label_gt
 
+		return 0
+
+	# ========================
+	# ==     PREDICT
+	# ========================
+	def predict(self,image,image_id='',bboxes_gt=[]):
+		""" Predict results on given image """
+
+		# - Throw error if image is None
+		if image is None:
+			logger.error("No input image given!")
+			return -1
+		self.image= image
+
+		if image_id:
+			self.image_id= image_id
+
+		# - Get detector result
+		r = self.model.detect([self.image], verbose=0)[0]
+		self.class_names= self.config.CLASS_NAMES
+		self.masks= r['masks']
+		self.boxes= r['rois']
+		self.class_ids= r['class_ids']
+		self.scores= r['scores']
+		self.nobjects= self.masks.shape[-1]
+
+		# - Process detected masks
+		if self.nobjects>0:
+			logger.info("Processing detected masks for image %s ..." % self.image_id)
+			self.extract_det_masks()
+		else:
+			logger.warn("No detected object found for image %s ..." % self.image_id)
+			return 0
+ 
+		# - Set gt box if given
+		self.bboxes_gt= bboxes_gt
+			
+		# - Draw results
+		if self.draw:
+			logger.info("Drawing results for image %s ..." % str(self.image_id))
+			outfile =  'out_' + str(self.image_id) + '.png'
+			self.draw_results(outfile)
+	
+		return 0
 
 	# ========================
 	# ==     INSPECT
@@ -262,30 +326,33 @@ class Analyzer(object):
 		""" Inspect results on given image """
 	
 		# - Retrieve data from dataset & model
-		print("INFO: Retrieve data from dataset & model ...")
+		logger.info("Retrieve data from dataset & model ...")
 		self.image_id= image_id
 		self.image_path= image_path
-		self.get_data()
+		if self.get_data()<0:
+			logger.error("Failed to set data from provided dataset!")
+			return -1
 
 		# - Process ground truth masks
-		print("INFO: Processing ground truth masks ...")
+		logger.info("Processing ground truth masks ...")
 		self.extract_gt_masks()
 
 		# - Process detected masks
 		if self.nobjects>0:
-			print("INFO: Processing detected masks ...")
+			logger.info("Processing detected masks ...")
 			self.extract_det_masks()
 		else:
-			print("WARN: No detected object found for image %s ..." % self.image_path_base)
+			logger.warn("No detected object found for image %s ..." % self.image_path_base)
 
 		# - Compute performance results
-		print("INFO: Compute performance results for image %s ..." % self.image_path_base)
+		logger.info("Compute performance results for image %s ..." % self.image_path_base)
 		self.compute_performances()
 
 		# - Draw results
 		if self.draw:
-			print("INFO: Drawing results for image %s ..." % self.image_path_base)
-			self.draw_results()
+			logger.info("Drawing results for image %s ..." % self.image_path_base)
+			outfile =  'out_' + self.image_path_base_noext + '.png'
+			self.draw_results(outfile)
 
 		return 0
 		
@@ -294,6 +361,12 @@ class Analyzer(object):
 	# ========================
 	def extract_gt_masks(self):
 		""" Extract ground truth masks & bbox """
+
+		# - Reset gt data
+		self.masks_gt_merged= []
+		self.class_ids_gt_merged= []
+		self.bboxes_gt= []
+		self.captions_gt= []
 
 		# - Inspect ground truth masks
 		masks_gt_det= []
@@ -307,18 +380,23 @@ class Analyzer(object):
 				continue
 
 			component_labels_gt, ncomponents_gt= self.extract_mask_connected_components(mask_gt)
-			print("DEBUG: Found %d sub components in gt mask no. %d ..." % (ncomponents_gt,k))
+			logger.debug("Found %d sub components in gt mask no. %d ..." % (ncomponents_gt,k))
 		
-			indices = np.indices(mask_gt.shape).T[:,:,[1, 0]]
+			#indices = np.indices(mask_gt.shape).T[:,:,[1, 0]]
+
 			for i in range(ncomponents_gt):	
-				mask_indices= indices[component_labels_gt==i+1]
+				#mask_indices= indices[component_labels_gt==i+1]
+				mask_indices= np.where(component_labels_gt==1)
 				extracted_mask= np.zeros(mask_gt.shape,dtype=mask_gt.dtype)
-				extracted_mask[mask_indices[:,0],mask_indices[:,1]]= 1
+				#extracted_mask[mask_indices[:,0],mask_indices[:,1]]= 1
+				#extracted_mask= np.where(component_labels_gt==1, [1], [0])
+				extracted_mask[mask_indices]= 1
 
 				# - Extract true object id from gt mask pixel values (1=sidelobes,2=sources,3=...)
 				#   Override class_id_gt
-				object_classid= mask_gt[mask_indices[0,0],mask_indices[0,1]]
-				print("DEBUG: gt mask no. %d (subcomponent no. %d): object_classid=%d ..." % (k,i,object_classid))
+				#object_classid= mask_gt[mask_indices[0,0],mask_indices[0,1]]
+				object_classid= mask_gt[mask_indices[0][0],mask_indices[1][0]]
+				logger.debug("gt mask no. %d (subcomponent no. %d): object_classid=%d ..." % (k,i,object_classid))
 
 				masks_gt_det.append(extracted_mask)
 				#class_ids_gt_det.append(self.class_id_gt)
@@ -332,7 +410,7 @@ class Analyzer(object):
 				same_class= (class_ids_gt_det[i]==class_ids_gt_det[j])
 				mergeable= (connected and same_class)
 				if mergeable:
-					print("DEBUG: GT mask (%d,%d) have connected components and can be merged..." % (i,j))
+					logger.debug("GT mask (%d,%d) have connected components and can be merged..." % (i,j))
 					g.addEdge(i,j)
 
 		cc = g.connectedComponents()
@@ -350,7 +428,7 @@ class Analyzer(object):
 				mask= masks_gt_det[index]
 				class_id= class_ids_gt_det[index]
 			
-				print("DEBUG: Merging GT mask no. %d (class_id=%d) ..." % (index,class_id))
+				logger.debug("Merging GT mask no. %d (class_id=%d) ..." % (index,class_id))
 				if j==0:
 					merged_mask= mask
 					#merged_score= score
@@ -382,13 +460,20 @@ class Analyzer(object):
 	def extract_det_masks(self):
 		""" Extract detected masks & bbox """
 		
+		# - Reset mask data		
+		self.masks_final= []
+		self.class_ids_final= []
+		self.scores_final= []	
+		self.bboxes= []
+		self.captions= []
+
 		# - Select detected objects with score larger than threshold
 		N = self.boxes.shape[0]
 		masks_sel= []
 		class_ids_sel= []
 		scores_sel= []
 		nobjects_sel= 0
-		print("INFO: %d objects (%d boxes) found in this image ..." % (self.nobjects,N))
+		logger.info("%d objects (%d boxes) found in this image ..." % (self.nobjects,N))
 
 		for i in range(N):
 			mask= self.masks[:, :, i]
@@ -397,16 +482,16 @@ class Analyzer(object):
 			label = self.class_names[class_id]
 			caption = "{} {:.3f}".format(label, score)
 			if score<self.score_thr:
-				print("DEBUG: Skipping object %s (id=%d) with score %f<thr=%f ..." % (label,class_id,score,self.score_thr))
+				logger.info("Skipping object %s (id=%d) with score %f<thr=%f ..." % (label,class_id,score,self.score_thr))
 				continue
 
-			print("DEBUG: Selecting object %s (id=%d) with score %f>thr=%f ..." % (label,class_id,score,self.score_thr))
+			logger.info("Selecting object %s (id=%d) with score %f>thr=%f ..." % (label,class_id,score,self.score_thr))
 			masks_sel.append(mask)
 			class_ids_sel.append(class_id)
 			scores_sel.append(score)
 			nobjects_sel+= 1
 		
-		print("INFO: %d objects selected in this image ..." % nobjects_sel)
+		logger.info("%d objects selected in this image ..." % nobjects_sel)
 
 		# - Sort objects by descending scores
 		sort_indices= np.argsort(scores_sel)[::-1]
@@ -429,27 +514,40 @@ class Analyzer(object):
 				masks_det.append(mask)
 				class_ids_det.append(class_id)
 				scores_det.append(score)
-				print("DEBUG: Selecting object %s (id=%d) with score %f>thr=%f ..." % (label,class_id,score,self.score_thr))
+				logger.info("Selecting object %s (id=%d) with score %f>thr=%f ..." % (label,class_id,score,self.score_thr))
 				continue
 
 			# - Extract components masks
 			component_labels, ncomponents= self.extract_mask_connected_components(mask)
-			print("DEBUG: Found %d sub components in mask no. %d ..." % (ncomponents,index))
+			logger.debug("Found %d sub components in mask no. %d ..." % (ncomponents,index))
 		
 			# - Extract indices of components and create masks for extracted components
-			indices = np.indices(mask.shape).T[:,:,[1, 0]]
+			#indices = np.indices(mask.shape).T[:,:,[1, 0]]
+			
+			#print("DEBUG: component_labels.shape")	
+			#print(component_labels.shape)
+			#print("DEBUG: mask.shape")
+			#print(mask.shape)
+			#print("DEBUG: np.indices(mask.shape)")
+			#print(np.indices(mask.shape).shape)
+			#print("DEBUG: indices")
+			#print(indices.shape)
+			#print("DEBUG: indices2")
+			#print(indices2.shape)			
+
 			for i in range(ncomponents):	
-				mask_indices= indices[component_labels==i+1]
+				#mask_indices= indices[component_labels==i+1]
 				extracted_mask= np.zeros(mask.shape,dtype=mask.dtype)
-				extracted_mask[mask_indices[:,0],mask_indices[:,1]]= 1
+				#extracted_mask[mask_indices[:,0],mask_indices[:,1]]= 1
+				extracted_mask= np.where(component_labels==i+1, [1], [0])
 
 				masks_det.append(extracted_mask)
 				class_ids_det.append(class_id)
 				scores_det.append(score)
-				print("DEBUG: Selecting object %s (id=%d) with score %f>thr=%f ..." % (label,class_id,score,self.score_thr))
+				logger.info("Selecting object %s (id=%d) with score %f>thr=%f ..." % (label,class_id,score,self.score_thr))
 			
 
-		print("INFO: Found %d components overall (after non-connected component extraction) in this image ..." % (len(masks_det)))
+		logger.info("Found %d components overall (after non-connected component extraction) in this image ..." % (len(masks_det)))
 		
 		# - Init undirected graph
 		#   Add links between masks that are connected
@@ -461,7 +559,7 @@ class Analyzer(object):
 				same_class= (class_ids_det[i]==class_ids_det[j])
 				mergeable= (connected and same_class)
 				if mergeable:
-					print("DEBUG: Mask (%d,%d) have connected components and can be merged..." % (i,j))
+					logger.debug("Mask (%d,%d) have connected components and can be merged..." % (i,j))
 					g.addEdge(i,j)
 
 		# - Compute connected masks
@@ -487,7 +585,7 @@ class Analyzer(object):
 				score= scores_det[index]
 				score_avg+= score
 
-				print("DEBUG: Merging mask no. %d ..." % index)
+				logger.debug("Merging mask no. %d ..." % index)
 				if j==0:
 					merged_mask= mask
 					merged_score= score
@@ -499,7 +597,7 @@ class Analyzer(object):
 			class_ids_merged.append(class_id)
 			scores_merged.append(score_avg)
 		
-		print("INFO: #%d masks found after merging ..." % len(masks_merged))
+		logger.info("#%d masks found after merging ..." % len(masks_merged))
 
 
 		# - Find if there are overlapping masks with different class id
@@ -512,7 +610,7 @@ class Analyzer(object):
 				same_class= (class_ids_merged[i]==class_ids_merged[j])
 				mergeable= connected
 				if mergeable:
-					print("DEBUG: Merged mask (%d,%d) have connected components and are selected for final selection..." % (i,j))
+					logger.debug("Merged mask (%d,%d) have connected components and are selected for final selection..." % (i,j))
 					g_final.addEdge(i,j)
 
 		cc_final = g_final.connectedComponents()
@@ -537,12 +635,12 @@ class Analyzer(object):
 					index_best= index
 					class_id_best= class_id
 			
-			print("DEBUG: Mask with index %s (score=%f, class=%d) selected as the best among all the overlapping masks..." % (index_best,score_best,class_id_best))
+			logger.debug("Mask with index %s (score=%f, class=%d) selected as the best among all the overlapping masks..." % (index_best,score_best,class_id_best))
 			self.masks_final.append(masks_merged[index_best])
 			self.class_ids_final.append(class_ids_merged[index_best])
 			self.scores_final.append(scores_merged[index_best])
 		
-		print("INFO: #%d masks finally selected..." % len(self.masks_final))
+		logger.info("#%d masks finally selected..." % len(self.masks_final))
 
 		# - Compute bounding boxes & image captions from selected masks
 		for i in range(len(self.masks_final)):
@@ -566,6 +664,14 @@ class Analyzer(object):
 	def compute_performances(self):
 		""" Compute performances """
 
+		# - Reset matrix
+		self.confusion_matrix= np.zeros((self.n_classes,self.n_classes))
+		self.confusion_matrix_norm= np.zeros((self.n_classes,self.n_classes))	
+		self.purity= np.zeros((1,self.n_classes))
+		self.nobjs_true= np.zeros((1,self.n_classes))
+		self.nobjs_det= np.zeros((1,self.n_classes))
+		self.nobjs_det_right= np.zeros((1,self.n_classes))
+
 		# - Loop over gt boxes and find associations to det boxes
 		for i in range(len(self.bboxes_gt)):
 			bbox_gt= self.bboxes_gt[i]
@@ -575,24 +681,24 @@ class Analyzer(object):
 			# - Find associations between true and detected objects according to largest IOU
 			index_best= -1
 			iou_best= 0
-			print("len(self.bboxes)=%d, len(self.class_ids_final)=%d" % (len(self.bboxes),len(self.class_ids_final)))
+			logger.debug("len(self.bboxes)=%d, len(self.class_ids_final)=%d" % (len(self.bboxes),len(self.class_ids_final)))
 	
 			for j in range(len(self.bboxes)):
 				class_id= self.class_ids_final[j]
 				bbox= self.bboxes[j]
 				iou= utils.get_iou(bbox, bbox_gt)
-				print("DEBUG: IOU(det=%d,true=%d)=%f" % (j,i,iou))
+				logger.debug("IOU(det=%d,true=%d)=%f" % (j,i,iou))
 				if iou>self.iou_thr and iou>=iou_best:
 					index_best= j
 					iou_best= iou
 
 			# - Update confusion matrix
 			if index_best==-1:
-				print("INFO: True object no. %d (class_id=%d) not associated to any detected object ..." % (i+1,class_id_gt))
+				logger.info("True object no. %d (class_id=%d) not associated to any detected object ..." % (i+1,class_id_gt))
 			else:
 				class_id_det= self.class_ids_final[index_best]
 				self.confusion_matrix[class_id_gt][class_id_det]+= 1
-				print("INFO: True object no. %d (class_id=%d) associated to detected object no. %d (class_id=%d) ..." % (i+1,class_id_gt,index_best,class_id_det))
+				logger.info("True object no. %d (class_id=%d) associated to detected object no. %d (class_id=%d) ..." % (i+1,class_id_gt,index_best,class_id_det))
 			
 
 		# - Normalize confusion matrix
@@ -659,18 +765,18 @@ class Analyzer(object):
 	# ========================
 	# ==   DRAW RESULTS
 	# ========================
-	def draw_results(self):
+	def draw_results(self,outfile):
 		""" Draw results """
 
 		# - Create axis
-		print("DEBUG: Create axis...")
+		logger.debug("Create axis...")
 		height, width = self.image.shape[:2]
 		#figsize=(height,width)
 		figsize=(16,16)
 		fig, ax = plt.subplots(1, figsize=figsize)
 	
 		# - Show area outside image boundaries
-		print("DEBUG: Show area outside image boundaries...")
+		logger.debug("Show area outside image boundaries...")
 		title= self.image_path_base_noext
 		#ax.set_ylim(height + 10, -10)
 		#ax.set_xlim(-10, width + 10)
@@ -684,61 +790,64 @@ class Analyzer(object):
 		masked_image = self.image.astype(np.uint32).copy()
 
 		# - Draw true bounding box
-		print("DEBUG: Draw true bounding box...")
-		for i in range(len(self.masks_gt_merged)):
-			label= self.class_names[self.class_ids_gt_merged[i]]
-			color_gt = self.class_color_map[label]
+		if self.bboxes_gt:
+			logger.debug("Draw true bounding box...")
+			for i in range(len(self.bboxes_gt)):
+				label= 'bkg'
+				if self.class_ids_gt_merged:
+					label= self.class_names[self.class_ids_gt_merged[i]]
+				color_gt = self.class_color_map[label]
 	
-			y1, x1, y2, x2 = self.bboxes_gt[i]
-			p = patches.Rectangle((x1, y1), x2 - x1, y2 - y1, linewidth=1,alpha=0.7, linestyle="dashed",edgecolor=color_gt, facecolor='none')
-			ax.add_patch(p)
+				y1, x1, y2, x2 = self.bboxes_gt[i]
+				p = patches.Rectangle((x1, y1), x2 - x1, y2 - y1, linewidth=1,alpha=0.7, linestyle="dashed",edgecolor=color_gt, facecolor='none')
+				ax.add_patch(p)
 
-			#caption = captions_gt[i]
-			caption = ""
-			ax.text(x1, y1 + 8, caption, color='w', size=13, backgroundcolor="none")
+				#caption = captions_gt[i]
+				caption = ""
+				ax.text(x1, y1 + 8, caption, color='w', size=13, backgroundcolor="none")
 
 
 		# - Draw detected objects
-		print("DEBUG: Draw detected objects...")
-		for i in range(len(self.masks_final)):
-			label= self.class_names[self.class_ids_final[i]]
-			color = self.class_color_map[label]
+		if self.masks_final:
+			logger.debug("Draw detected objects...")
+			for i in range(len(self.masks_final)):
+				label= self.class_names[self.class_ids_final[i]]
+				color = self.class_color_map[label]
 		
-			# Bounding box
-			y1, x1, y2, x2 = self.bboxes[i]
-			p = patches.Rectangle((x1, y1), x2 - x1, y2 - y1, linewidth=2,alpha=0.7, linestyle="solid",edgecolor=color, facecolor='none')
-			ax.add_patch(p)
-	
-			# Label
-			caption = self.captions[i]
-			ax.text(x1, y1 + 8, caption, color=color, size=20, backgroundcolor="none")
-
-			# Mask
-			mask= self.masks_final[i]
-			masked_image = visualize.apply_mask(masked_image, mask, color)
-	
-			# Mask Polygon
-			# Pad to ensure proper polygons for masks that touch image edges.
-			padded_mask = np.zeros( (mask.shape[0] + 2, mask.shape[1] + 2), dtype=np.uint8)
-			padded_mask[1:-1, 1:-1] = mask
-			contours = find_contours(padded_mask, 0.5)
-			for verts in contours:
-				# Subtract the padding and flip (y, x) to (x, y)
-				verts = np.fliplr(verts) - 1
-				p = Polygon(verts, facecolor="none", edgecolor=color)
+				# Bounding box
+				y1, x1, y2, x2 = self.bboxes[i]
+				p = patches.Rectangle((x1, y1), x2 - x1, y2 - y1, linewidth=2,alpha=0.7, linestyle="solid",edgecolor=color, facecolor='none')
 				ax.add_patch(p)
+	
+				# Label
+				caption = self.captions[i]
+				ax.text(x1, y1 + 8, caption, color=color, size=20, backgroundcolor="none")
 
-		ax.imshow(masked_image.astype(np.uint8))
+				# Mask
+				mask= self.masks_final[i]
+				masked_image = visualize.apply_mask(masked_image, mask, color)
+	
+				# Mask Polygon
+				# Pad to ensure proper polygons for masks that touch image edges.
+				padded_mask = np.zeros( (mask.shape[0] + 2, mask.shape[1] + 2), dtype=np.uint8)
+				padded_mask[1:-1, 1:-1] = mask
+				contours = find_contours(padded_mask, 0.5)
+				for verts in contours:
+					# Subtract the padding and flip (y, x) to (x, y)
+					verts = np.fliplr(verts) - 1
+					p = Polygon(verts, facecolor="none", edgecolor=color)
+					ax.add_patch(p)
+
+			ax.imshow(masked_image.astype(np.uint8))
 
 
 		# - Write to file	
-		print("DEBUG: Write to file ...")
-		outfile =  'out_' + self.image_path_base_noext + '.png'
+		logger.debug("Write to file %s ..." % outfile)
 		t1 = time.time()
 		fig.savefig(outfile)
 		#fig.savefig(outfile,bbox_inches='tight')
 		t2 = time.time()
-		print('savefig: %.2fs' % (t2 - t1))
+		#print('savefig: %.2fs' % (t2 - t1))
 		plt.close(fig)
 		#plt.show()
 

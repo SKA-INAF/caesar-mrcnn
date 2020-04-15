@@ -28,6 +28,7 @@ import shutil
 import warnings
 from distutils.version import LooseVersion
 
+
 ## ASTRO MODULES
 from astropy.io import ascii, fits
 from astropy.units import Quantity
@@ -509,7 +510,7 @@ def resize_image(image, min_dim=None, max_dim=None, min_scale=None, mode="square
 
     # Resize image using bilinear interpolation
     if scale != 1:
-        print("DEBUG: Resizing image to size (%d,%d) (scale=%d)" % (round(h * scale),round(w * scale),scale))
+        #print("DEBUG: Resizing image from size (%d,%d) to size (%d,%d) (scale=%d)" % (h,w,round(h * scale),round(w * scale),scale))
         image = resize(image, (round(h * scale), round(w * scale)),
                        preserve_range=True)
 
@@ -978,6 +979,11 @@ def resize(image, output_shape, order=1, mode='constant', cval=0, clip=True,
 ############################################################
 #  Data I/O
 ############################################################
+def read_table(filename):
+    """ Read ascii table """
+    t= ascii.read(filename)
+    return t
+
 def read_fits(filename,stretch=True,normalize=True,convertToRGB=True):
     """ Read FITS image """
 	
@@ -1066,4 +1072,42 @@ def gray2rgb(data_float):
 
     return data3_uint8
 
+def crop_img(data,x0,y0,dx,dy,stretch=False,normalize=False,convertToRGB=False):
+    """ Extract sub image of size (dx,dy) around pixel (x0,y0) """
 
+    #- Extract crop data
+    xmin= int(x0-dx/2)
+    xmax= int(x0+dx/2)
+    ymin= int(y0-dy/2)
+    ymax= int(y0+dy/2)		
+    #crop_data= data[ymin:ymax+1,xmin:xmax+1]
+    crop_data= data[ymin:ymax,xmin:xmax]
+	
+    #- Replace NAN with zeros and inf with large numbers
+    #np.nan_to_num(crop_data,False)
+
+    # - Replace nan values with min pix value
+    img_min= np.nanmin(crop_data)
+    crop_data[np.isnan(crop_data)]= img_min	
+
+    # - Stretch data using zscale transform
+    if stretch:
+        data_stretched= stretch_img(crop_data)
+        crop_data= data_stretched
+        crop_data= crop_data.astype(np.float32)
+
+    # - Normalize data to [0,255]
+    if normalize:
+        data_norm= normalize_img(crop_data)
+        crop_data= data_norm
+        crop_data= crop_data.astype(np.float32)
+
+    # - Convert to RGB image
+    if convertToRGB:
+       if not normalize:
+            data_norm= normalize_img(crop_data)
+            crop_data= data_norm
+       data_rgb= gray2rgb(crop_data) 
+       crop_data= data_rgb
+
+    return crop_data
