@@ -80,12 +80,13 @@ class SDetectorConfig(Config):
 	IMAGES_PER_GPU = 2
 
 	# Number of classes (including background)
-	NUM_CLASSES = 1 + 4  # Background + Objects (sidelobes, sources, galaxy_C2, galaxy_C3)
+	NUM_CLASSES = 1 + 5  # Background + Objects (sidelobes, sources, galaxy_C1, galaxy_C2, galaxy_C3)
 
 	# Number of training steps per epoch
 	#STEPS_PER_EPOCH = 16000
 	VALIDATION_STEPS = max(1, 200 // (IMAGES_PER_GPU*GPU_COUNT)) # 200 validation/test images
-	STEPS_PER_EPOCH = ((16439 - 200) // (IMAGES_PER_GPU*GPU_COUNT)) #16439 total images
+	#STEPS_PER_EPOCH = ((16439 - 200) // (IMAGES_PER_GPU*GPU_COUNT)) #16439 total images
+	STEPS_PER_EPOCH = ((18888 - 200) // (IMAGES_PER_GPU*GPU_COUNT)) #18888 total images
 	
 	# Don't exclude based on confidence. Since we have two classes
 	# then 0.5 is the minimum anyway as it picks between source and BG
@@ -184,13 +185,15 @@ class SourceDataset(utils.Dataset):
 			'bkg': 0,
 			'sidelobe': 1,
 			'source': 2,
-			'galaxy_C2': 3,
-			'galaxy_C3': 4,
+			'galaxy_C1': 3,
+			'galaxy_C2': 4,
+			'galaxy_C3': 5,
 		}
 		self.add_class("sources", 1, "sidelobe")
 		self.add_class("sources", 2, "source")
-		self.add_class("sources", 3, "galaxy_C2")
-		self.add_class("sources", 4, "galaxy_C3")
+		self.add_class("sources", 3, "galaxy_C1")
+		self.add_class("sources", 4, "galaxy_C2")
+		self.add_class("sources", 5, "galaxy_C3")
 		 
 
 		# Read dataset
@@ -394,7 +397,7 @@ if __name__ == '__main__':
 
 	parser.add_argument("command",metavar="<command>",help="'train' or 'splash'")
 	parser.add_argument('--dataset', required=False,metavar="/path/to/balloon/dataset/",help='Directory of the source dataset')
-	parser.add_argument('--weights', required=True,metavar="/path/to/weights.h5",help="Path to weights .h5 file or 'coco'")
+	parser.add_argument('--weights', required=False,metavar="/path/to/weights.h5",help="Path to weights .h5 file or 'coco'")
 	parser.add_argument('--logs', required=False,default=DEFAULT_LOGS_DIR,metavar="/path/to/logs/",help='Logs and checkpoints directory (default=logs/)')
 	parser.add_argument('--image', required=False,metavar="path or URL to image",help='Image to apply the color splash effect on')
 	parser.add_argument('--nepochs', required=False,default=10,type=int,metavar="Number of training epochs",help='Number of training epochs')
@@ -424,6 +427,11 @@ if __name__ == '__main__':
 	print("ngpu: ",args.ngpu)
 	print("nimg_per_gpu: ",args.nimg_per_gpu)
 
+	weights_path = args.weights
+
+	train_from_scratch= False
+	if not weights_path or weights_path=='':
+		train_from_scratch= True
 
 	# Configurations
 	if args.command == "train":
@@ -456,22 +464,21 @@ if __name__ == '__main__':
 		with tf.device(DEVICE):
 			model = modellib.MaskRCNN(mode="inference", config=config,model_dir=args.logs)
 
-	# Select weights file to load
-	weights_path = args.weights
-
 	# Load weights
-	print("Loading weights ", weights_path)
-	if args.weighttype.lower() == "coco":
-		# Exclude the last layers because they require a matching number of classes
-		model.load_weights(
-			weights_path, by_name=True, 
-			exclude=[
-				"mrcnn_class_logits", "mrcnn_bbox_fc",
-				"mrcnn_bbox", "mrcnn_mask"
-			]
-		)
-	else:
-		model.load_weights(weights_path, by_name=True)
+	if not train_from_scratch:	
+		print("Loading weights ", weights_path)
+	
+		if args.weighttype.lower() == "coco":
+			# Exclude the last layers because they require a matching number of classes
+			model.load_weights(
+				weights_path, by_name=True, 
+				exclude=[
+					"mrcnn_class_logits", "mrcnn_bbox_fc",
+					"mrcnn_bbox", "mrcnn_mask"
+				]
+			)
+		else:
+			model.load_weights(weights_path, by_name=True)
 
 	# Train or evaluate
 	if args.command == "train":
