@@ -85,10 +85,10 @@ class SDetectorConfig(Config):
 	IMAGES_PER_GPU = 2
 
 	# Number of classes (including background)
-	NUM_CLASSES = 1 + 4  # Background + Objects (sidelobes, sources, galaxy_C2, galaxy_C3)
+	NUM_CLASSES = 1 + 5  # Background + Objects (sidelobes, sources, galaxy_C1, galaxy_C2, galaxy_C3)
 
 	# Number of training steps per epoch
-	STEPS_PER_EPOCH = 16000
+	STEPS_PER_EPOCH = 18888
 
 	# Don't exclude based on confidence. Since we have two classes
 	# then 0.5 is the minimum anyway as it picks between source and BG
@@ -187,15 +187,16 @@ class SourceDataset(utils.Dataset):
 			'bkg': 0,
 			'sidelobe': 1,
 			'source': 2,
-			'galaxy_C2': 3,
-			'galaxy_C3': 4,
+			'galaxy_C1': 3,
+			'galaxy_C2': 4,
+			'galaxy_C3': 5,
 		}
 		self.add_class("sources", 1, "sidelobe")
 		self.add_class("sources", 2, "source")
-		self.add_class("sources", 3, "galaxy_C2")
-		self.add_class("sources", 4, "galaxy_C3")
+		self.add_class("sources", 3, "galaxy_C1")
+		self.add_class("sources", 4, "galaxy_C2")
+		self.add_class("sources", 5, "galaxy_C3")
 		 
-		
 
 		# Read dataset
 		with open(dataset,'r') as f:
@@ -384,6 +385,7 @@ if __name__ == '__main__':
 	parser.add_argument('--image', required=False,metavar="path or URL to image",help='Image to apply the color splash effect on')
 	parser.add_argument('--nepochs', required=False,default=10,type=int,metavar="Number of training epochs",help='Number of training epochs')
 	parser.add_argument('--epoch_length', required=False,default=10,type=int,metavar="Number of data batches per epoch",help='Number of data batches per epoch')
+	parser.add_argument('--nvalidation_steps', required=False,default=50,type=int,metavar="Number of validation steps per epoch",help='Number of validation steps per epoch')
 	parser.add_argument('--weighttype', required=False,default='',metavar="Type of weights",help="Type of weights")
 	parser.add_argument('--nthreads', required=False,default=1,type=int,metavar="Number of worker threads",help="Number of worker threads")
 	parser.add_argument('--nimg_test', required=False,default=-1,type=int,metavar="Number of images in dataset to inspect during test",help="Number of images in dataset to inspect during test")	
@@ -408,6 +410,12 @@ if __name__ == '__main__':
 	print("epoch_length: ",args.epoch_length)
 	print("nimg_test: ",args.nimg_test)
 	print("scoreThr_test: ",args.scoreThr_test)
+
+	weights_path = args.weights
+
+	train_from_scratch= False
+	if not weights_path or weights_path=='':
+		train_from_scratch= True
 
 	# Configurations
 	if args.command == "train":
@@ -434,18 +442,35 @@ if __name__ == '__main__':
 	weights_path = args.weights
 
 	# Load weights
-	print("Loading weights ", weights_path)
-	if args.weighttype.lower() == "coco":
-		# Exclude the last layers because they require a matching number of classes
-		model.load_weights(
-			weights_path, by_name=True, 
-			exclude=[
-				"mrcnn_class_logits", "mrcnn_bbox_fc",
-				"mrcnn_bbox", "mrcnn_mask"
-			]
-		)
-	else:
-		model.load_weights(weights_path, by_name=True)
+	#print("Loading weights ", weights_path)
+	#if args.weighttype.lower() == "coco":
+	#	# Exclude the last layers because they require a matching number of classes
+	#	model.load_weights(
+	#		weights_path, by_name=True, 
+	#		exclude=[
+	#			"mrcnn_class_logits", "mrcnn_bbox_fc",
+	#			"mrcnn_bbox", "mrcnn_mask"
+	#		]
+	#	)
+	#else:
+	#	model.load_weights(weights_path, by_name=True)
+
+	# Load weights
+	if not train_from_scratch:	
+		print("Loading weights ", weights_path)
+	
+		if args.weighttype.lower() == "coco":
+			# Exclude the last layers because they require a matching number of classes
+			model.load_weights(
+				weights_path, by_name=True, 
+				exclude=[
+					"mrcnn_class_logits", "mrcnn_bbox_fc",
+					"mrcnn_bbox", "mrcnn_mask"
+				]
+			)
+		else:
+			model.load_weights(weights_path, by_name=True)
+
 
 	# Train or evaluate
 	if args.command == "train":

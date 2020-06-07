@@ -108,7 +108,6 @@ class SClassifier(object):
 		self.scutout_size= 132
 
 		# - Classifier options
-		self.class_data= []
 		self.iou_thr= 0.6
 		self.score_thr= 0.7
 		
@@ -144,7 +143,6 @@ class SClassifier(object):
 				break
 
 			# - Classify source
-			#sname= str(source.GetName())
 			sname= self.sources[i].name
 			logger.info("Classifying source %s ..." % (sname))
 			status= self.classify_source(i)
@@ -152,7 +150,7 @@ class SClassifier(object):
 				logger.warn("Failed to run source classification on source %s!" % (sname))
 				continue
 
-		# ...
+		# - Process classification info
 		# ...
 
 		return 0
@@ -349,13 +347,13 @@ class SClassifier(object):
 				print(indices_ass)
 				for index_ass in indices_ass:
 					sname_ass= self.sources[index_ass].name			
-					print("sname=%s, sname_ass=%s" % (sname_s,sname_ass))	
+					#print("sname=%s, sname_ass=%s" % (sname_s,sname_ass))	
 					if sname_ass!=sname_s:
 						snames.append(sname_ass)
 
 				logger.info("Source %s associated to class %s (class_id=%d) with score=%f ..." % (sname_s,class_name,class_id,score))
-				print("--> Associated sources ")
-				print(snames)
+				#print("--> Associated sources ")
+				#print(snames)
 
 				c= SClassInfo()	
 				c.class_id= class_id
