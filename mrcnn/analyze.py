@@ -267,12 +267,24 @@ class Analyzer(object):
 		#N = boxes.shape[0]
 
 		# - Retrieve ground truth masks
-		#self.masks_gt= self.dataset.load_gt_mask(image_id)
-		self.masks_gt= self.dataset.load_gt_mask_nonbinary(self.image_id)
-		self.class_id_gt = self.dataset.image_info[self.image_id]["class_id"]
-		self.label_gt= self.class_names[self.class_id_gt]
-		self.color_gt = self.class_color_map[self.label_gt]
-		self.caption_gt = self.label_gt
+		#self.masks_gt= self.dataset.load_gt_mask_nonbinary(self.image_id)
+		#self.class_id_gt = self.dataset.image_info[self.image_id]["class_id"]		
+		#self.label_gt= self.class_names[self.class_id_gt]
+		#self.color_gt = self.class_color_map[self.label_gt]
+		#self.caption_gt = self.label_gt
+
+		self.masks_gt= self.dataset.load_gt_masks(self.image_id,binary=False)
+		self.class_ids_gt = self.dataset.image_info[self.image_id]["class_ids"]
+		self.labels_gt= []
+		self.colors_gt= []
+		self.captions_gt= []
+
+		for item in self.class_ids_gt:
+			label= self.class_names[item]
+			color= self.class_color_map[label]
+			self.labels_gt.append(label)
+			self.colors_gt.append(color)
+			self.captions_gt.append(label)
 
 		return 0
 
@@ -374,32 +386,29 @@ class Analyzer(object):
 
 		for k in range(self.masks_gt.shape[-1]):
 			mask_gt= self.masks_gt[:,:,k]
-			if self.label_gt=='galaxy_C2' or self.label_gt=='galaxy_C3':
+			label_gt= self.labels_gt[k]
+			class_id_gt= self.class_ids_gt[k]
+			#if self.label_gt=='galaxy_C2' or self.label_gt=='galaxy_C3' or self.label_gt=='galaxy':
+			if label_gt=='galaxy_C2' or label_gt=='galaxy_C3' or label_gt=='galaxy':
 				masks_gt_det.append(mask_gt)
-				class_ids_gt_det.append(self.class_id_gt)
+				#class_ids_gt_det.append(self.class_id_gt)
+				class_ids_gt_det.append(class_id_gt)
 				continue
 
 			component_labels_gt, ncomponents_gt= self.extract_mask_connected_components(mask_gt)
 			logger.debug("Found %d sub components in gt mask no. %d ..." % (ncomponents_gt,k))
 		
-			#indices = np.indices(mask_gt.shape).T[:,:,[1, 0]]
-
 			for i in range(ncomponents_gt):	
-				#mask_indices= indices[component_labels_gt==i+1]
 				mask_indices= np.where(component_labels_gt==1)
 				extracted_mask= np.zeros(mask_gt.shape,dtype=mask_gt.dtype)
-				#extracted_mask[mask_indices[:,0],mask_indices[:,1]]= 1
-				#extracted_mask= np.where(component_labels_gt==1, [1], [0])
 				extracted_mask[mask_indices]= 1
 
 				# - Extract true object id from gt mask pixel values (1=sidelobes,2=sources,3=...)
 				#   Override class_id_gt
-				#object_classid= mask_gt[mask_indices[0,0],mask_indices[0,1]]
 				object_classid= mask_gt[mask_indices[0][0],mask_indices[1][0]]
 				logger.debug("gt mask no. %d (subcomponent no. %d): object_classid=%d ..." % (k,i,object_classid))
 
 				masks_gt_det.append(extracted_mask)
-				#class_ids_gt_det.append(self.class_id_gt)
 				class_ids_gt_det.append(object_classid)
 			
 		N= len(masks_gt_det)
