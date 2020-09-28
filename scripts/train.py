@@ -212,8 +212,8 @@ class SourceDataset(utils.Dataset):
 				image_id= str(uuid.uuid1())
 
 				class_id= 0
-				if class_name in class_id_map:
-					class_id= class_id_map.get(class_name)					
+				if class_name in self.class_id_map:
+					class_id= self.class_id_map.get(class_name)					
 
 				self.add_image(
         	"rg-dataset",
