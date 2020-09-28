@@ -374,7 +374,7 @@ class SourceDataset(utils.Dataset):
 #             TRAIN
 ############################################################
 
-def train(model,nepochs=10,nthreads=1):    
+def train(args,model,nepochs=10,nthreads=1):    
 	"""Train the model."""
     
 	# Training dataset.
@@ -416,7 +416,7 @@ def train(model,nepochs=10,nthreads=1):
 #        TEST
 ############################################################
 
-def test(model):
+def test(args,model):
 	""" Test the model on input dataset """  
 
 	dataset = SourceDataset()
@@ -554,9 +554,9 @@ def main():
 	#===========================
 	# - Train or evaluate
 	if args.command == "train":
-		train(model,args.nepochs,args.nthreads)
+		train(args,model,args.nepochs,args.nthreads)
 	elif args.command == "test":
-		test(model)	
+		test(args,model)	
 	
 	return 0
 
