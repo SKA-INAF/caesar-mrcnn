@@ -374,21 +374,25 @@ class SourceDataset(utils.Dataset):
 #             TRAIN
 ############################################################
 
-def train(args,model,nepochs=10,nthreads=1):    
+def train(args,model,config):    
 	"""Train the model."""
-    
-	# Training dataset.
+	
+	# - Set options
+	nepochs= args.nepochs
+	nthreads= args.nthreads    
+
+	# - Training dataset.
 	dataset_train = SourceDataset()
 	dataset_train.load_dataset(args.dataset)
 	dataset_train.prepare()
 
-	# Validation dataset
+	# - Validation dataset
 	dataset_val = SourceDataset()
 	dataset_val.load_dataset(args.dataset)
 	dataset_val.prepare()
 
-	# Image augmentation
-	# http://imgaug.readthedocs.io/en/latest/source/augmenters.html
+	# - Image augmentation
+	#   http://imgaug.readthedocs.io/en/latest/source/augmenters.html
 	augmentation = iaa.SomeOf((0, 2), 
 		[
 			iaa.Fliplr(1.0),
@@ -397,12 +401,8 @@ def train(args,model,nepochs=10,nthreads=1):
 		]
 	)
 
-
-	# *** This training schedule is an example. Update to your needs ***
-	# Since we're using a very small dataset, and starting from
-	# COCO trained weights, we don't need to train too long. Also,
-	# no need to train all layers, just the heads should do it.
-	print("INFO: Training network ...")
+	# - Start train
+	logger.info("Start training ...")
 	model.train(dataset_train, dataset_val,	
 		learning_rate=config.LEARNING_RATE,
 		epochs=nepochs,
@@ -419,10 +419,12 @@ def train(args,model,nepochs=10,nthreads=1):
 def test(args,model):
 	""" Test the model on input dataset """  
 
+	# - Create the dataset
 	dataset = SourceDataset()
 	dataset.load_dataset(args.dataset)
 	dataset.prepare()
 
+	# - Test model on dataset
 	tester= ModelTester(model,config,dataset)	
 	tester.score_thr= args.scoreThr_test
 	tester.iou_thr= args.iouThr_test
@@ -554,7 +556,7 @@ def main():
 	#===========================
 	# - Train or evaluate
 	if args.command == "train":
-		train(args,model,args.nepochs,args.nthreads)
+		train(args,model,config)
 	elif args.command == "test":
 		test(args,model)	
 	
