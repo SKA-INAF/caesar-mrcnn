@@ -18,6 +18,7 @@ import os
 import sys
 import json
 import time
+import argparse
 import datetime
 import numpy as np
 import skimage.draw
@@ -429,18 +430,15 @@ def test(model):
 
 	tester.test()
 
+
+############################################################
+#        PARSE/VALIDATE ARGS
+############################################################
+
+def parse_args():
+	""" Parse command line arguments """  
   
-	
-############################################################
-#       MAIN
-############################################################
-def main():
-	"""Main function"""
-
-#if __name__ == '__main__':    
-	import argparse
-
-	# Parse command line arguments
+	# - Parse command line arguments
 	parser = argparse.ArgumentParser(description='Train Mask R-CNN to detect radio sources.')
 
 	parser.add_argument("command",metavar="<command>",help="'train' or 'test'")
@@ -461,14 +459,36 @@ def main():
 
 	args = parser.parse_args()
 
-	# Validate arguments
+	#return vars(args)
+	return args
+
+############################################################
+#       MAIN
+############################################################
+def main():
+	"""Main function"""
+
+	#===========================
+	#==   PARSE ARGS
+	#===========================
+	logger.info("Parsing script args ...")
+	try:
+		args= parse_args()
+	except Exception as ex:
+		logger.error("Failed to get and parse options (err=%s)",str(ex))
+		return 1
+
+	#===========================
+	#==   VALIDATE ARGS
+	#===========================
+	logger.info("Validating script args ...")
 	if args.command == "train":
 		assert args.dataset, "Argument --dataset is required for training"
 	elif args.command == "test":
 		assert args.dataset, "Argument --dataset is required for testing"
 	else:
 		logger.error("Unknown command given (%s), valid commands are {train,test}!" % args.command)
-		return -1
+		return 1
 
 	print("Weights: ", args.weights)
 	print("Dataset: ", args.dataset)
@@ -487,7 +507,9 @@ def main():
 	if not weights_path or weights_path=='':
 		train_from_scratch= True
 
-	# Configurations
+	#===========================
+	#==   CONFIG
+	#===========================
 	if args.command == "train":
 		config = SDetectorConfig()
 		config.GPU_COUNT = args.ngpu
@@ -503,9 +525,11 @@ def main():
 			IMAGES_PER_GPU = 1
 		config = InferenceConfig()
 
-	
 	config.display()
 
+	#===========================
+	#==   CREATE MODEL
+	#===========================
 	# - Create model
 	if args.command == "train":
 		model = modellib.MaskRCNN(mode="training", config=config,model_dir=args.logs)
@@ -525,6 +549,9 @@ def main():
 		logger.info("Loading weights from file %s ..." % weights_path)
 		model.load_weights(weights_path, by_name=True)
 	
+	#===========================
+	#==   TRAIN/TEST
+	#===========================
 	# - Train or evaluate
 	if args.command == "train":
 		train(model,args.nepochs,args.nthreads)
