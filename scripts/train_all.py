@@ -85,10 +85,12 @@ class SDetectorConfig(Config):
 	IMAGES_PER_GPU = 2
 
 	# Number of classes (including background)
-	NUM_CLASSES = 1 + 5  # Background + Objects (sidelobes, sources, galaxy_C1, galaxy_C2, galaxy_C3)
+	#NUM_CLASSES = 1 + 5  # Background + Objects (sidelobes, sources, galaxy_C1, galaxy_C2, galaxy_C3)
+	NUM_CLASSES = 1 + 3  # Background + Objects (sidelobes, sources, galaxy)
 
 	# Number of training steps per epoch
-	STEPS_PER_EPOCH = 18888
+	##STEPS_PER_EPOCH = 18888
+	STEPS_PER_EPOCH = 16439
 
 	# Don't exclude based on confidence. Since we have two classes
 	# then 0.5 is the minimum anyway as it picks between source and BG
@@ -183,20 +185,31 @@ class SourceDataset(utils.Dataset):
 				dataset_dir: Root directory of the dataset.
 		"""
 		# Add classes. We have only one class to add
+		#class_id_map= {
+		#	'bkg': 0,
+		#	'sidelobe': 1,
+		#	'source': 2,
+		#	'galaxy_C1': 3,
+		#	'galaxy_C2': 4,
+		#	'galaxy_C3': 5,
+		#}
+		#self.add_class("sources", 1, "sidelobe")
+		#self.add_class("sources", 2, "source")
+		#self.add_class("sources", 3, "galaxy_C1")
+		#self.add_class("sources", 4, "galaxy_C2")
+		#self.add_class("sources", 5, "galaxy_C3")
+		 
 		class_id_map= {
 			'bkg': 0,
 			'sidelobe': 1,
 			'source': 2,
-			'galaxy_C1': 3,
-			'galaxy_C2': 4,
-			'galaxy_C3': 5,
+			'galaxy': 3
 		}
 		self.add_class("sources", 1, "sidelobe")
 		self.add_class("sources", 2, "source")
-		self.add_class("sources", 3, "galaxy_C1")
-		self.add_class("sources", 4, "galaxy_C2")
-		self.add_class("sources", 5, "galaxy_C3")
+		self.add_class("sources", 3, "galaxy")
 		 
+
 
 		# Read dataset
 		with open(dataset,'r') as f:
