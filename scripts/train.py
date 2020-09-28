@@ -1,55 +1,52 @@
 """
 Mask R-CNN
-Train on the toy Balloon dataset and implement color splash effect.
+Train on the radio galaxy/source/sidelobe dataset.
 
-Copyright (c) 2018 Matterport, Inc.
-Licensed under the MIT License (see LICENSE for details)
-Written by Waleed Abdulla
+Copyright (c) 2020 Simone Riggi - INAF
+Licensed under the GPL3 License (see LICENSE for details)
 
 ------------------------------------------------------------
 
-Usage: import the module (see Jupyter notebooks for examples), or run from
-       the command line as such:
+Usage: Run from the command line as such:
 
-    # Train a new model starting from pre-trained COCO weights
-    python3 balloon.py train --dataset=/path/to/balloon/dataset --weights=coco
+    # Train a new model starting from pre-trained weights
+    python3 train.py train --dataset=/path/to/dataset --weights=...
 
-    # Resume training a model that you had trained earlier
-    python3 balloon.py train --dataset=/path/to/balloon/dataset --weights=last
-
-    # Train a new model starting from ImageNet weights
-    python3 balloon.py train --dataset=/path/to/balloon/dataset --weights=imagenet
-
-    # Apply color splash to an image
-    python3 balloon.py splash --weights=/path/to/weights/file.h5 --image=<URL or path to file>
-
-    # Apply color splash to video using the last weights you trained
-    python3 balloon.py splash --weights=last --video=<URL or path to file>
 """
 
 import os
 import sys
 import json
+import time
 import datetime
 import numpy as np
 import skimage.draw
+import skimage.measure
+import tensorflow as tf
 from imgaug import augmenters as iaa
-import matplotlib.pyplot as plt
-from matplotlib import patches
+from skimage.measure import find_contours
+from imgaug import augmenters as iaa
+import uuid
 
 # Root directory of the project
-#ROOT_DIR = os.path.abspath("../../")
 ROOT_DIR = os.getcwd()
 
 # Import Mask RCNN
 sys.path.append(ROOT_DIR)  # To find local version of the library
+from mrcnn import logger
 from mrcnn.config import Config
 from mrcnn import model as modellib, utils
 from mrcnn import visualize
+from mrcnn.analyze import ModelTester
+from mrcnn.graph import Graph
 
-# Path to trained weights file
-#COCO_WEIGHTS_PATH = os.path.join(ROOT_DIR, "mask_rcnn_coco.h5")
-COCO_WEIGHTS_PATH = '/home/riggi/Data/MLData/NNWeights/mask_rcnn_coco.h5'
+## Import graphics modules
+import matplotlib
+#matplotlib.use('Agg')
+#matplotlib.use('TkAgg')
+import matplotlib.pyplot as plt
+from matplotlib import patches, lines
+from matplotlib.patches import Polygon
 
 # Directory to save logs and model checkpoints, if not provided
 # through the command line argument --logs
@@ -60,26 +57,31 @@ DEFAULT_LOGS_DIR = os.path.join(ROOT_DIR, "logs")
 ############################################################
 
 
-class SidelobeConfig(Config):
+class SDetectorConfig(Config):
     
 	""" Configuration for training on the toy  dataset.
 			Derives from the base Config class and overrides some values.
 	"""
 	# Give the configuration a recognizable name	
-	NAME = "sidelobes"
+	NAME = "rg-dataset"
+
+	# NUMBER OF GPUs to use. When using only a CPU, this needs to be set to 1.
+	GPU_COUNT = 1
 
 	# We use a GPU with 12GB memory, which can fit two images.
 	# Adjust down if you use a smaller GPU.
 	IMAGES_PER_GPU = 2
 
 	# Number of classes (including background)
-	NUM_CLASSES = 1 + 1  # Background + sidelobes
-	CLASS_COLORS = ['black','red']
-	CLASS_LABELS = ['bkg','sidelobe']
+	##NUM_CLASSES = 1 + 5  # Background + Objects (sidelobes, sources, galaxy_C1, galaxy_C2, galaxy_C3)
+	NUM_CLASSES = 1 + 3  # Background + Objects (sidelobes, sources, galaxy)
 
 	# Number of training steps per epoch
-	STEPS_PER_EPOCH = 1000
-
+	#STEPS_PER_EPOCH = 16000
+	VALIDATION_STEPS = max(1, 200 // (IMAGES_PER_GPU*GPU_COUNT)) # 200 validation/test images
+	STEPS_PER_EPOCH = ((16439 - 200) // (IMAGES_PER_GPU*GPU_COUNT)) #16439 total images
+	#STEPS_PER_EPOCH = ((18888 - 200) // (IMAGES_PER_GPU*GPU_COUNT)) #18888 total images
+	
 	# Don't exclude based on confidence. Since we have two classes
 	# then 0.5 is the minimum anyway as it picks between source and BG
 	DETECTION_MIN_CONFIDENCE = 0 # default=0.9 (skip detections with <90% confidence)
@@ -121,8 +123,8 @@ class SidelobeConfig(Config):
 	#         size IMAGE_MIN_DIM x IMAGE_MIN_DIM. Can be used in training only.
 	#         IMAGE_MAX_DIM is not used in this mode.
 	IMAGE_RESIZE_MODE = "square"
-	IMAGE_MIN_DIM = 192
-	IMAGE_MAX_DIM = 192
+	IMAGE_MIN_DIM = 256
+	IMAGE_MAX_DIM = 256
 	
 	# Image mean (RGB)
 	#MEAN_PIXEL = np.array([112,112,112])
@@ -163,20 +165,41 @@ class SidelobeConfig(Config):
 
 
 ############################################################
-#  Dataset
+#       DATASET CLASS
 ############################################################
 
-class SidelobeDataset(utils.Dataset):
+class SourceDataset(utils.Dataset):
 
+	""" Define dataset class """
+
+	# ================================================================
+	# ==   CONSTRUCTOR
+	# ================================================================
+	def __init__(self):
+		utils.Dataset.__init__(self)
+	
+		self.class_id_map= {
+			'bkg': 0,
+			'sidelobe': 1,
+			'source': 2,
+			'galaxy': 3
+		}
+		
+		# - Add classes
+		self.add_class("rg-dataset", 1, "sidelobe")
+		self.add_class("rg-dataset", 2, "source")
+		self.add_class("rg-dataset", 3, "galaxy")
+		
+
+	# ================================================================
+	# ==   LOAD DATASET FROM ASCII (row format: file,mask,class_id)
+	# ================================================================
 	def load_dataset(self, dataset):
-		""" Load a subset of the Sidelobe dataset.
+		""" Load a subset of the source dataset.
 				dataset_dir: Root directory of the dataset.
 		"""
-		# Add classes. We have only one class to add
-		class_id= 1
-		self.add_class("sidelobe", class_id, "sidelobe")
- 
-		# Read dataset
+		 
+		# - Read dataset
 		with open(dataset,'r') as f:
 		
 			for line in f:
@@ -184,107 +207,182 @@ class SidelobeDataset(utils.Dataset):
 				(filename,filename_mask,class_name) = line_split
 
 				filename_base= os.path.basename(filename)
-				filename_base_noext= os.path.splitext(filename_base)[0]						
+				filename_base_noext= os.path.splitext(filename_base)[0]	
+				image_id= str(uuid.uuid1())
+
+				class_id= 0
+				if class_name in class_id_map:
+					class_id= class_id_map.get(class_name)					
 
 				self.add_image(
-        	class_name,
-					image_id=filename_base_noext,  # use file name as a unique image id
+        	"rg-dataset",
+					#image_id=filename_base_noext,  # use file name as a unique image id
+					image_id=image_id,  # use file name as a unique image id
 					path=filename,
-					path_mask=filename_mask,
-					class_id=class_id
+					path_masks=[filename_mask],
+					class_ids=[class_id]
 				)
 
+	# ================================================================
+	# ==   LOAD DATASET FROM ASCII (row format: jsonfile)
+	# ================================================================
+	def load_dataset_json(self, dataset):
+		""" Load dataset specified in a json filelist """
+	
+		# - Read json filelist
+		with open(dataset,'r') as f:
+			for filename in f:
+				logger.info("Loading dataset info from file %s ..." % filename)
 
-	def load_gt_mask(self, image_id):
+				# - Read json file
+				try:
+					json_file = open(filename)
+				except IOError:
+					logger.error("Failed to open file %s, skip it..." % filename)
+					continue
+	
+				# - Read obj info
+				d= json.load(json_file)				
+				print(d)
+					
+				img_path= d['img']
+				img_path_base= os.path.basename(img_path)
+				img_path_base_noext= os.path.splitext(img_path_base)[0]
+				img_id= str(uuid.uuid1())
+	
+				nobjs= len(d['objs'])
+				logger.info("#%d objects present in file %s ..." % filename)
+				
+				mask_paths= []
+				class_ids= []	
+				
+				for obj_dict in d['objs']:
+					mask_path= obj_dict['mask']
+					class_name= obj_dict['class']
+					class_id= 0
+					if class_name in self.class_id_map:
+						class_id= self.class_id_map.get(class_name)	
+					mask_paths.append(mask_path)
+					class_ids.append(class_id)
+				
+				# - Add image & mask informations in dataset class
+				self.add_image(
+        	"rg-dataset",
+					image_id=img_id,
+					path=img_path,
+					path_masks=mask_paths,
+					class_ids=class_ids
+				)
+		
+	# ================================================================
+	# ==   LOAD GT MASKS (multiple objects per image)
+	# ================================================================
+	def load_gt_masks(self, image_id, binary=True):
 		""" Load gt mask """
 
 		# Read filename
 		info = self.image_info[image_id]
-		filename= info["path_mask"]
-		class_id= info["class_id"]
+		filenames= info["path_masks"]
+		nobjs= len(filenames)
 
-		# Read mask
-		data, header= utils.read_fits(filename,stretch=False,normalize=False,convertToRGB=False)
-		height= data.shape[0]
-		width= data.shape[1]
-		data= data.astype(np.bool)
-		
-		mask = np.zeros([height,width,1],dtype=np.bool)
-		mask[:,:,0]= data
+		# Read mask file and fill binary mask images
+		mask = None	
+		counter= 0
+
+		for filename in filenames:
+			data, header= utils.read_fits(filename,stretch=False,normalize=False,convertToRGB=False)
+			height= data.shape[0]
+			width= data.shape[1]
+			if binary:
+				data= data.astype(np.bool)
+			if not mask:
+				if binary:
+					mask = np.zeros([height,width,nobjs],dtype=np.bool)
+				else:
+					mask = np.zeros([height,width,nobjs],dtype=np.int)
+			mask[:,:,counter]= data
+			counter+= 1
 	
 		return mask
 
 
+	# ================================================================
+	# ==   LOAD MASK (multiple objects per image)
+	# ================================================================
 	def load_mask(self, image_id):
 		""" Generate instance masks for an image.
 				Returns:
 					masks: A bool array of shape [height, width, instance count] with one mask per instance.
 					class_ids: a 1D array of class IDs of the instance masks.
 		"""
-		# If not a sidelobe dataset image, delegate to parent class.
-		image_info = self.image_info[image_id]
-		if image_info["source"] != "sidelobe":
+
+		# - Check	dataset name
+		if self.image_info[image_id]["source"] != "rg-dataset":
 			return super(self.__class__, self).load_mask(image_id)
 
-		# Set bitmap mask of shape [height, width, instance_count]
+		# - Set bitmap mask of shape [height, width, instance_count]
 		info = self.image_info[image_id]
-		filename= info["path_mask"]
-		class_id= info["class_id"]
+		filenames= info["path_masks"]
+		class_ids= info["class_ids"]
 
-		# Read mask
-		data, header= utils.read_fits(filename,stretch=False,normalize=False,convertToRGB=False)
-		height= data.shape[0]
-		width= data.shape[1]
+		# - Read mask files
+		mask = None	
+		counter= 0
 
-		data= data.astype(np.bool)
+		for filename in filenames:
+			data, header= utils.read_fits(filename,stretch=False,normalize=False,convertToRGB=False)
+			height= data.shape[0]
+			width= data.shape[1]
+			data= data.astype(np.bool)
+			if not mask:
+				mask = np.zeros([height,width,nobjs],dtype=np.bool)
+			mask[:,:,counter]= data
+			counter+= 1
 
-		mask = np.zeros([height,width,1],dtype=np.bool)
-		mask[:,:,0]= data
-
-		instance_counts= np.full([mask.shape[-1]], class_id, dtype=np.int32)
+		instance_counts= np.full([mask.shape[-1]], class_ids, dtype=np.int32)
 		
-		# Return mask, and array of class IDs of each instance
+		# - Return mask, and array of class IDs of each instance
 		return mask, instance_counts
 
 
+	# ================================================================
+	# ==   LOAD IMAGE
+	# ================================================================
 	def load_image(self, image_id):
 		"""Load the specified image and return a [H,W,3] Numpy array."""
-		# Load image
+		
+		# - Load image
 		filename= self.image_info[image_id]['path']
-
 		image, header= utils.read_fits(filename,stretch=True,normalize=True,convertToRGB=True)
-		
-		#image = skimage.io.imread(filename)
-        
-		# If grayscale. Convert to RGB for consistency.
-		#if image.ndim != 3:
-		#	image = skimage.color.gray2rgb(image)
-		# If has an alpha channel, remove it for consistency
-		#if image.shape[-1] == 4:
-		#	image = image[..., :3]
-		
+				
 		return image
 
+	# ================================================================
+	# ==   GET IMAGE PATH
+	# ================================================================
 	def image_reference(self, image_id):
 		""" Return the path of the image."""
-		info = self.image_info[image_id]
-		if info["source"] == "sidelobe":
+
+		if info["source"] == "rg-dataset":
 			return info["path"]
 		else:
-			super(self.__class__, self).image_reference(image_id)
-
+			super(self.__class__).image_reference(self, image_id)
 
 	
+############################################################
+#             TRAIN
+############################################################
+
 def train(model,nepochs=10,nthreads=1):    
 	"""Train the model."""
     
 	# Training dataset.
-	dataset_train = SidelobeDataset()
+	dataset_train = SourceDataset()
 	dataset_train.load_dataset(args.dataset)
 	dataset_train.prepare()
 
 	# Validation dataset
-	dataset_val = SidelobeDataset()
+	dataset_val = SourceDataset()
 	dataset_val.load_dataset(args.dataset)
 	dataset_val.prepare()
 
@@ -292,11 +390,12 @@ def train(model,nepochs=10,nthreads=1):
 	# http://imgaug.readthedocs.io/en/latest/source/augmenters.html
 	augmentation = iaa.SomeOf((0, 2), 
 		[
-			iaa.Fliplr(0.5),
-			iaa.Flipud(0.5),
+			iaa.Fliplr(1.0),
+			iaa.Flipud(1.0),
 			iaa.OneOf([iaa.Affine(rotate=90),iaa.Affine(rotate=180),iaa.Affine(rotate=270)])
 		]
 	)
+
 
 	# *** This training schedule is an example. Update to your needs ***
 	# Since we're using a very small dataset, and starting from
@@ -312,309 +411,52 @@ def train(model,nepochs=10,nthreads=1):
 		n_worker_threads=nthreads
 	)
 
-
-def test2(model):
-	""" Test the model on input dataset """    
-	dataset = SidelobeDataset()
-	dataset.load_dataset(args.dataset)
-	dataset.prepare()
-
-	for index, image_id in enumerate(dataset.image_ids):
-		# - Load image
-		image = dataset.load_image(image_id)
-		image_path = dataset.image_info[index]['path']
-		image_path_base= os.path.basename(image_path)
-		image_path_base_noext= os.path.splitext(image_path_base)[0]		
-
-		# - Load mask
-		mask_gt= dataset.load_gt_mask(image_id)
-
-		mask_gt_chan3= np.broadcast_to(mask_gt,image.shape)
-		image_masked_gt= np.copy(image)
-		image_masked_gt[np.where((mask_gt_chan3==[True,True,True]).all(axis=2))]=[255,255,0]
-
-		outfile = 'gtmask_' + image_path_base_noext + '.png'
-		skimage.io.imsave(outfile, image_masked_gt)
-
-		# - Extract true bounding box from true mask		
-		bboxes_gt= utils.extract_bboxes(mask_gt)
-
-		# Detect objects
-		r = model.detect([image], verbose=0)[0]
-		mask= r['masks']
-		bboxes= r['rois']
-		##bboxes= utils.extract_bboxes(mask)
-		class_labels= r['class_ids']
-		nobjects= mask.shape[-1]
-		if nobjects <= 0:
-			print("INFO: No object mask found for image %s ..." % image_path_base)
-			continue	
-		
-		# Save image with masks
-		outfile =  'out_' + image_path_base_noext + '.png'	
-		visualize.display_instances(
-			image, 
-			r['rois'], 
-			r['masks'], 
-			r['class_ids'],
-			dataset.class_names, 
-			r['scores'],
-			show_bbox=True, 
-			show_mask=True,
-			title="Predictions"
-		)
-		plt.savefig(outfile)
-
+############################################################
+#        TEST
+############################################################
 
 def test(model):
-	""" Test the model on input dataset """    
-	dataset = SidelobeDataset()
+	""" Test the model on input dataset """  
+
+	dataset = SourceDataset()
 	dataset.load_dataset(args.dataset)
 	dataset.prepare()
 
-	for index, image_id in enumerate(dataset.image_ids):
-		# - Load image
-		image = dataset.load_image(image_id)
-		image_path = dataset.image_info[index]['path']
-		image_path_base= os.path.basename(image_path)
-		image_path_base_noext= os.path.splitext(image_path_base)[0]		
+	tester= ModelTester(model,config,dataset)	
+	tester.score_thr= args.scoreThr_test
+	tester.iou_thr= args.iouThr_test
+	tester.n_max_img= args.nimg_test
 
-		# - Load mask
-		mask_gt= dataset.load_gt_mask(image_id)
-		print("mask_gt shape")
-		print(mask_gt.shape)
+	tester.test()
 
-		mask_gt_chan3= np.broadcast_to(mask_gt,image.shape)
-		image_masked_gt= np.copy(image)
-		print(image_masked_gt.shape)
-		image_masked_gt[np.where((mask_gt_chan3==[True,True,True]).all(axis=2))]=[255,255,0]
-
-		outfile = 'gtmask_' + image_path_base_noext + '.png'
-		skimage.io.imsave(outfile, image_masked_gt)
-
-		# - Extract true bounding box from true mask		
-		bboxes_gt= utils.extract_bboxes(mask_gt)
-
-		# Detect objects
-		r = model.detect([image], verbose=0)[0]
-		mask= r['masks']
-		bboxes= r['rois']
-		##bboxes= utils.extract_bboxes(mask)
-		class_labels= r['class_ids']
-		nobjects= mask.shape[-1]
-		if nobjects <= 0:
-			print("INFO: No object mask found for image %s ..." % image_path_base)
-			continue	
-		
-		
-		# - Count if there are objects (=1) in mask
-		print("INFO: #%d detections found for image %s ..." % (nobjects,image_path_base))
-		n_mask_true= 0
-		for i in range(0,nobjects):
-			mask_data = mask[:,:,i]
-			counts= np.count_nonzero(mask_data)
-			if counts<=0:
-				continue
-
-			n_mask_true+= counts
-			print("--> Printing mask no. %s (true counts=%d)" % (str(i+1),counts))
-			print(mask_data)
-
-		if n_mask_true<=0:
-			print("WARN: Counts of true values in mask should be >0 at this stage, skip data...")
-			continue
-
-			
-		# Collapse mask in one layer
-		mask_merged = (np.sum(mask, -1, keepdims=True) >= 1)
-		mask_merged_chan3= np.broadcast_to(mask_merged,image.shape)
-
-		print("mask shape")
-		print(mask.shape)
-		print("mask_merged shape")
-		print(mask_merged.shape)
-		print("mask_merged_chan3 shape")
-		print(mask_merged_chan3.shape)
-		
-		# Extract bboxes from collapsed masks
-		bboxes_pred= utils.extract_bboxes(mask_merged)
-
-		# Color mask pixels with red
-		image_masked= np.copy(image)
-		image_masked[np.where((mask_merged_chan3==[True,True,True]).all(axis=2))]=[255,0,0]
-				
-		# Save predicted mask
-		outfile= 'recmask_' + image_path_base_noext + '.png'
-		skimage.io.imsave(outfile,255*mask_merged_chan3.astype(np.uint8))
-
-		# Save splash map
-		outfile = 'splash_' + image_path_base_noext + '.png'
-		skimage.io.imsave(outfile, image_masked)
-		
-		# Draw map with bounding boxes
-		outfile =  'bboxes_' + image_path_base_noext + '.png'	
-		draw(image,bboxes_gt,bboxes_pred,class_labels,outfile)
-
-
-		# Save image with masks
-		outfile =  'out_' + image_path_base_noext + '.png'	
-		visualize.display_instances(
-			image, 
-			r['rois'], 
-			r['masks'], 
-			r['class_ids'],
-			dataset.class_names, 
-			r['scores'],
-			show_bbox=True, 
-			show_mask=True,
-			title="Predictions"
-		)
-		plt.savefig(outfile)
-
-
-def draw(image,bboxes_gt,bboxes_pred,label_ids,outfile):
-	""" Draw image with test results """
-		
-	print("image shape")
-	print(image.shape)
-	print("bboxes_gt shape")
-	print(bboxes_gt.shape)
-	print("bboxes_pred shape")
-	print(bboxes_pred.shape)
-	print("label_ids shape")
-	print(label_ids.shape)
-
-	######################
-	##    DRAW FIGURE
-	######################
-	fig = plt.figure()
+  
 	
-	# - Add axes and set them not visible
-	ax = plt.axes([0,0,1,1], frameon=False)
-	#ax = fig.add_axes([0,0,1,1])
-	ax.get_xaxis().set_visible(False)
-	ax.get_yaxis().set_visible(False)
-
-	# Even though our axes (plot region) are set to cover the whole image with [0,0,1,1],
-	# by default they leave padding between the plotted data and the frame. We use tigher=True
-	# to make sure the data gets scaled to the full extents of the axes.
-	plt.autoscale(tight=True)
-
-	# - Draw image
-	plt.imshow(image,cmap='gray')
-
-	# - Add true bounding boxes to the image
-	nobjects_true= bboxes_gt.shape[0]
-	for index in range(nobjects_true):
-		y1= bboxes_gt[index][0]
-		x1= bboxes_gt[index][1]
-		y2= bboxes_gt[index][2]
-		x2= bboxes_gt[index][3]
-		width= np.abs(x2-x1)
-		height= np.abs(y2-y1)
-		rect = patches.Rectangle((x1,y1), width, height, edgecolor = 'yellow', facecolor = 'none')
-		ax.add_patch(rect)
-
-	# - Add predicted bounding boxes to the image
-	nobjects_pred= bboxes_pred.shape[0]
-	nlabels= label_ids.shape[0]
-	for index in range(nobjects_pred):
-		if index<nlabels:
-			label_id= label_ids[index]
-			label= config.CLASS_LABELS[label_id]
-			color= config.CLASS_COLORS[label_id]
-		else:
-			label= ''
-			color= 'black'
-		y1= bboxes_pred[index][0]
-		x1= bboxes_pred[index][1]
-		y2= bboxes_pred[index][2]
-		x2= bboxes_pred[index][3]
-		width= np.abs(x2-x1)
-		height= np.abs(y2-y1)
-		rect = patches.Rectangle((x1,y1), width, height, edgecolor = color, facecolor = 'none')
-		ax.add_patch(rect)
-		ax.annotate(label, xy=(x1+0.5*width,y2-10),color=color)
-
-	# - Save annotated image to file
-	plt.subplots_adjust(0,0,1,1,0,0)
-	for ax in fig.axes:
-		ax.axis('off')
-		ax.margins(0,0)
-		ax.set_frame_on(False)
-		ax.xaxis.set_major_locator(plt.NullLocator())
-		ax.yaxis.set_major_locator(plt.NullLocator())
-
-	plt.margins(0,0)
-	plt.savefig(outfile, bbox_inches='tight',pad_inches = 0)
-	
-	# - Save array to image file
-	#plt.imsave(outfile,image)
-	
-	# - Close figure
-	plt.close()
-
-
-def color_splash(image, mask):
-	""" Apply color splash effect.
-			image: RGB image [height, width, 3]
-			mask: instance segmentation mask [height, width, instance count]
-
-   		Returns result image.
-	"""
-	# Make a grayscale copy of the image. The grayscale copy still
-	# has 3 RGB channels, though.
-	gray = skimage.color.gray2rgb(skimage.color.rgb2gray(image)) * 255
-	# Copy color pixels from the original color image where mask is set
-	if mask.shape[-1] > 0:
-		# We're treating all instances as one, so collapse the mask into one layer
-		mask = (np.sum(mask, -1, keepdims=True) >= 1)
-		splash = np.where(mask, image, gray).astype(np.uint8)
-	else:
-		splash = gray.astype(np.uint8)
-
-	return splash
-
-
-def detect_and_color_splash(model, image_path):
-
-	# Run model detection and generate the color splash effect
-	print("Running on {}".format(args.image))
-	
-	# Read image
-	#image = skimage.io.imread(args.image)
-	image, header= utils.read_fits(filename=image_path,stretch=True,normalize=True,convertToRGB=True)
-
-	# Detect objects
-	r = model.detect([image], verbose=1)[0]
-
-	# Color splash
-	splash = color_splash(image, r['masks'])
-	
-	# Save output
-	file_name = "splash_{:%Y%m%dT%H%M%S}.png".format(datetime.datetime.now())
-	skimage.io.imsave(file_name, splash)
-
-
 ############################################################
-#  Training
+#       MAIN
 ############################################################
 
 if __name__ == '__main__':    
 	import argparse
 
 	# Parse command line arguments
-	parser = argparse.ArgumentParser(description='Train Mask R-CNN to detect sidelobes.')
+	parser = argparse.ArgumentParser(description='Train Mask R-CNN to detect radio sources.')
 
-	parser.add_argument("command",metavar="<command>",help="'train' or 'splash'")
-	parser.add_argument('--dataset', required=False,metavar="/path/to/balloon/dataset/",help='Directory of the Sidelobe dataset')
-	parser.add_argument('--weights', required=True,metavar="/path/to/weights.h5",help="Path to weights .h5 file or 'coco'")
+	parser.add_argument("command",metavar="<command>",help="'train' or 'test'")
+	parser.add_argument('--dataset', required=False,metavar="/path/to/dataset/",help='Directory of the source dataset')
+	parser.add_argument('--weights', required=False,metavar="/path/to/weights.h5",help="Path to weights .h5 file")
 	parser.add_argument('--logs', required=False,default=DEFAULT_LOGS_DIR,metavar="/path/to/logs/",help='Logs and checkpoints directory (default=logs/)')
 	parser.add_argument('--image', required=False,metavar="path or URL to image",help='Image to apply the color splash effect on')
 	parser.add_argument('--nepochs', required=False,default=10,type=int,metavar="Number of training epochs",help='Number of training epochs')
+	parser.add_argument('--epoch_length', required=False,default=10,type=int,metavar="Number of data batches per epoch",help='Number of data batches per epoch')
+	parser.add_argument('--nvalidation_steps', required=False,default=50,type=int,metavar="Number of validation steps per epoch",help='Number of validation steps per epoch')
+	parser.add_argument('--ngpu', required=False,default=1,type=int,metavar="Number of GPUs",help='Number of GPUs')
+	parser.add_argument('--nimg_per_gpu', required=False,default=1,type=int,metavar="Number of images per gpu",help='Number of images per gpu')
 	parser.add_argument('--weighttype', required=False,default='',metavar="Type of weights",help="Type of weights")
 	parser.add_argument('--nthreads', required=False,default=1,type=int,metavar="Number of worker threads",help="Number of worker threads")
-	
+	parser.add_argument('--nimg_test', required=False,default=-1,type=int,metavar="Number of images in dataset to inspect during test",help="Number of images in dataset to inspect during test")	
+	parser.add_argument('--scoreThr_test', required=False,default=0.7,type=float,metavar="Object detection score threshold to be used during test",help="Object detection score threshold to be used during test")
+	parser.add_argument('--iouThr_test', required=False,default=0.6,type=float,metavar="IOU threshold used to match detected objects with true objects",help="IOU threshold used to match detected objects with true objects")
+
 	args = parser.parse_args()
 
 	# Validate arguments
@@ -622,76 +464,69 @@ if __name__ == '__main__':
 		assert args.dataset, "Argument --dataset is required for training"
 	elif args.command == "test":
 		assert args.dataset, "Argument --dataset is required for testing"
-	elif args.command == "splash":
-		assert args.image, "Provide --image to apply color splash"
+	else:
+		logger.error("Unknown command given (%s), valid commands are {train,test}!" % args.command)
+		return -1
 
 	print("Weights: ", args.weights)
 	print("Dataset: ", args.dataset)
 	print("Logs: ", args.logs)
 	print("nEpochs: ",args.nepochs)
+	print("epoch_length: ",args.epoch_length)
+	print("nvalidation_steps: ",args.nvalidation_steps)
+	print("ngpu: ",args.ngpu)
+	print("nimg_per_gpu: ",args.nimg_per_gpu)
+	print("nimg_test: ",args.nimg_test)
+	print("scoreThr_test: ",args.scoreThr_test)
+
+	weights_path = args.weights
+
+	train_from_scratch= False
+	if not weights_path or weights_path=='':
+		train_from_scratch= True
 
 	# Configurations
 	if args.command == "train":
-		config = SidelobeConfig()
-	else:
-		class InferenceConfig(SidelobeConfig):
+		config = SDetectorConfig()
+		config.GPU_COUNT = args.ngpu
+		config.IMAGES_PER_GPU = args.nimg_per_gpu
+		config.VALIDATION_STEPS = max(1, args.nvalidation_steps // (config.IMAGES_PER_GPU*config.GPU_COUNT)) # 200 validation/test images
+		config.STEPS_PER_EPOCH = ((args.epoch_length - args.nvalidation_steps) // (config.IMAGES_PER_GPU*config.GPU_COUNT)) #16439 total images
+		#config.STEPS_PER_EPOCH= args.epoch_length
+	elif args.command == "test":
+		class InferenceConfig(SDetectorConfig):
 			# Set batch size to 1 since we'll be running inference on
 			# one image at a time. Batch size = GPU_COUNT * IMAGES_PER_GPU
 			GPU_COUNT = 1
 			IMAGES_PER_GPU = 1
 		config = InferenceConfig()
+
+	
 	config.display()
 
-	# Create model
+	# - Create model
 	if args.command == "train":
 		model = modellib.MaskRCNN(mode="training", config=config,model_dir=args.logs)
-	else:
-		model = modellib.MaskRCNN(mode="inference", config=config,model_dir=args.logs)
+	elif args.command == "test":
+		# Device to load the neural network on.
+		# Useful if you're training a model on the same 
+		# machine, in which case use CPU and leave the
+		# GPU for training.
+		DEVICE = "/cpu:0"  # /cpu:0 or /gpu:0
+		with tf.device(DEVICE):
+			model = modellib.MaskRCNN(mode="inference", config=config,model_dir=args.logs)
 
-	# Select weights file to load
-	weights_path = args.weights
-
-	#if args.weights.lower() == "coco":
-	#	weights_path = COCO_WEIGHTS_PATH
-	#	# Download weights file
-	#	if not os.path.exists(weights_path):
-	#		utils.download_trained_weights(weights_path)
-	#elif args.weights.lower() == "last":
-	#	# Find last trained weights
-	#	weights_path = model.find_last()
-	#elif args.weights.lower() == "imagenet":
-	#	# Start from ImageNet trained weights
-	#	weights_path = model.get_imagenet_weights()
-	#else:
-	#	weights_path = args.weights
-
-	# Load weights
-	print("Loading weights ", weights_path)
-	#if args.weights.lower() == "coco":
-	if args.weighttype.lower() == "coco":
-		# Exclude the last layers because they require a matching
-		# number of classes
-		model.load_weights(
-			weights_path, by_name=True, 
-			exclude=[
-				"mrcnn_class_logits", "mrcnn_bbox_fc",
-				"mrcnn_bbox", "mrcnn_mask"
-			]
-		)
-	else:
+	# - Load weights
+	if train_from_scratch:
+		logger.info("No weights given, training from scratch ...")
+	else:	
+		logger.info("Loading weights from file %s ..." % weights_path)
 		model.load_weights(weights_path, by_name=True)
-
-	# Train or evaluate
+	
+	# - Train or evaluate
 	if args.command == "train":
 		train(model,args.nepochs,args.nthreads)
 	elif args.command == "test":
-		#test(model)	
-		test2(model)	
-	elif args.command == "splash":
-		detect_and_color_splash(model, image_path=args.image)
-	else:
-		print("'{}' is not recognized. "
-			"Use 'train' or 'splash'".format(args.command))
-
-
+		test(model)	
+	
 
