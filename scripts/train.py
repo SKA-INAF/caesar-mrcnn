@@ -325,6 +325,7 @@ class SourceDataset(utils.Dataset):
 		info = self.image_info[image_id]
 		filenames= info["path_masks"]
 		class_ids= info["class_ids"]
+		nobjs= len(filenames)
 
 		# - Read mask files
 		mask = None	
