@@ -434,8 +434,10 @@ def test(model):
 ############################################################
 #       MAIN
 ############################################################
+def main():
+	"""Main function"""
 
-if __name__ == '__main__':    
+#if __name__ == '__main__':    
 	import argparse
 
 	# Parse command line arguments
@@ -529,4 +531,12 @@ if __name__ == '__main__':
 	elif args.command == "test":
 		test(model)	
 	
+	return 0
+
+
+###################
+##   MAIN EXEC   ##
+###################
+if __name__ == "__main__":
+	sys.exit(main())
 
