@@ -408,7 +408,7 @@ class SourceDataset(utils.Dataset):
 			path = root.split(os.sep)
 			#print((len(path) - 1) * '---', os.path.basename(root))
 			#for file in files:
-			for filename in sorted(files, key=int):
+			for filename in sorted(files):
 				if not filename.endswith(".json"):
 					continue
 				print(os.path.join(root, filename))
