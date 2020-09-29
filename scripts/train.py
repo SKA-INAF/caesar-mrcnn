@@ -773,6 +773,7 @@ def main():
 	if args.command == "train":
 		config = SDetectorConfig()
 		config.NUM_CLASSES = nclasses + 1
+		config.IMAGE_META_SIZE = 1 + 3 + 3 + 4 + 1 + self.NUM_CLASSES
 		config.GPU_COUNT = args.ngpu
 		config.IMAGES_PER_GPU = args.nimg_per_gpu
 		config.VALIDATION_STEPS = max(1, args.nvalidation_steps // (config.IMAGES_PER_GPU*config.GPU_COUNT)) # 200 validation/test images
@@ -786,6 +787,7 @@ def main():
 			IMAGES_PER_GPU = 1
 		config = InferenceConfig()
 		config.NUM_CLASSES = nclasses + 1
+		config.IMAGE_META_SIZE = 1 + 3 + 3 + 4 + 1 + self.NUM_CLASSES
 
 	config.display()
 
