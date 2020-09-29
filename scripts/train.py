@@ -216,11 +216,13 @@ class SourceDataset(utils.Dataset):
 
 		# - Reset class info (defined in parent class) and add new entries defined in dictionary
 		logger.info("Reset class info ...")
-		self.class_info= [{"source": "", "id": 0, "name": "bkg"}]
+		self.class_info= [{"source": "", "id": 0, "name": "BG"}]
 
 		for class_name in self.class_id_map:
 			class_id= self.class_id_map[class_name]
 			self.add_class("rg-dataset", class_id, class_name)
+
+		print(self.class_info)
 			
 		# - Append bkg item (if not given in input)
 		self.class_id_map['bkg']= 0
