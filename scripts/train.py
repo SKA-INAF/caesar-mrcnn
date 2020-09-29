@@ -328,7 +328,7 @@ class SourceDataset(utils.Dataset):
 			return -1
 	
 		nobjs= len(d['objs'])
-		logger.debug("#%d objects present in file %s ..." % filename)
+		logger.debug("#%d objects present in file %s ..." % (nobjs,filename))
 				
 		mask_paths= []
 		class_ids= []	
