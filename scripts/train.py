@@ -75,7 +75,8 @@ class SDetectorConfig(Config):
 
 	# Number of classes (including background)
 	##NUM_CLASSES = 1 + 5  # Background + Objects (sidelobes, sources, galaxy_C1, galaxy_C2, galaxy_C3)
-	NUM_CLASSES = 1 + 3  # Background + Objects (sidelobes, sources, galaxy)
+	##NUM_CLASSES = 1 + 3  # Background + Objects (sidelobes, sources, galaxy)
+	NUM_CLASSES = 1
 
 	# Number of training steps per epoch
 	#STEPS_PER_EPOCH = 16000
