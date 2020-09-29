@@ -228,8 +228,10 @@ class Analyzer(object):
 		self.draw= True
 		self.class_color_map= {
 			'bkg': (0,0,0),# black
-			'sidelobe': (1,1,0),# yellow
-			'source': (1,0,0),# red
+			#'sidelobe': (1,1,0),# yellow
+			'sidelobe': (1,0,0),# red
+			'source': (0,0,1),# blue
+			'galaxy': (1,1,0),# yellow	
 			'galaxy_C2': (0,0,1),# blue
 			'galaxy_C3': (0,1,0),# green
 		}
