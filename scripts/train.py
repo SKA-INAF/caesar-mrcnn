@@ -396,7 +396,7 @@ class SourceDataset(utils.Dataset):
 		""" Load dataset found in json files recursively """
 	
 		# - Check topdir exists
-		if not os.path.isdir():
+		if not os.path.isdir(topdir):
 			logger.error("Directory %d does not exists on filesystem!" % topdir)
 			return -1			
 
