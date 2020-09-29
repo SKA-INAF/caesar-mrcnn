@@ -207,10 +207,13 @@ class SourceDataset(utils.Dataset):
 				line_split = line.strip().split(',')
 				(filename,filename_mask,class_name) = line_split
 
-				filename_base= os.path.basename(filename)
-				filename_base_noext= os.path.splitext(filename_base)[0]	
+				# - Get paths
+				filename_fullpath= os.path.abspath(filename)
+				#filename_base= os.path.basename(filename_fullpath)
+				#filename_base_noext= os.path.splitext(filename_base)[0]	
+				filename_mask_fullpath= os.path.abspath(filename_mask)
 				image_id= str(uuid.uuid1())
-
+				
 				class_id= 0
 				if class_name in self.class_id_map:
 					class_id= self.class_id_map.get(class_name)					
@@ -219,8 +222,8 @@ class SourceDataset(utils.Dataset):
         	"rg-dataset",
 					#image_id=filename_base_noext,  # use file name as a unique image id
 					image_id=image_id,  # use file name as a unique image id
-					path=filename,
-					path_masks=[filename_mask],
+					path=filename_fullpath,
+					path_masks=[filename_mask_fullpath],
 					class_ids=[class_id]
 				)
 
@@ -247,7 +250,8 @@ class SourceDataset(utils.Dataset):
 				print(d)
 					
 				img_path= d['img']
-				img_path_base= os.path.basename(img_path)
+				img_fullpath= os.path.abspath(img_path)
+				img_path_base= os.path.basename(img_fullpath)
 				img_path_base_noext= os.path.splitext(img_path_base)[0]
 				img_id= str(uuid.uuid1())
 	
@@ -259,18 +263,19 @@ class SourceDataset(utils.Dataset):
 				
 				for obj_dict in d['objs']:
 					mask_path= obj_dict['mask']
+					mask_fullpath= os.path.abspath(mask_path)
 					class_name= obj_dict['class']
 					class_id= 0
 					if class_name in self.class_id_map:
 						class_id= self.class_id_map.get(class_name)	
-					mask_paths.append(mask_path)
+					mask_paths.append(mask_fullpath)
 					class_ids.append(class_id)
 				
 				# - Add image & mask informations in dataset class
 				self.add_image(
         	"rg-dataset",
 					image_id=img_id,
-					path=img_path,
+					path=img_fullpath,
 					path_masks=mask_paths,
 					class_ids=class_ids
 				)
