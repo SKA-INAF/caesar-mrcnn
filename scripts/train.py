@@ -405,7 +405,7 @@ class SourceDataset(utils.Dataset):
 
 		for root, dirs, files in os.walk(topdir):
 			path = root.split(os.sep)
-			print((len(path) - 1) * '---', os.path.basename(root))
+			#print((len(path) - 1) * '---', os.path.basename(root))
 			for file in files:
 				if not file.endswith(".json"):
 					continue
