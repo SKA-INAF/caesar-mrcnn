@@ -299,7 +299,7 @@ class SourceDataset(utils.Dataset):
 	# ================================================================
 	# ==   LOAD DATASET FROM JSON
 	# ================================================================
-	def load_data_from_json_file(self, filename):
+	def load_data_from_json_file(self, filename, rootdir=''):
 		""" Load dataset specified in a json file """
 
 		# - Read json file
@@ -313,11 +313,14 @@ class SourceDataset(utils.Dataset):
 		d= json.load(json_file)				
 		#print(d)
 					
-		img_path= d['img']
+		#img_path= d['img']
+		img_path= os.path.join(rootdir, d['img'])
 		img_fullpath= os.path.abspath(img_path)
 		img_path_base= os.path.basename(img_fullpath)
 		img_path_base_noext= os.path.splitext(img_path_base)[0]
 		img_id= str(uuid.uuid1())
+	
+		logger.info("img_path=%s, img_fullpath=%s" % (img_path,img_fullpath))
 
 		valid_img= (os.path.isfile(img_fullpath) and img_fullpath.endswith('.fits'))
 		if not valid_img:
@@ -491,7 +494,7 @@ class SourceDataset(utils.Dataset):
 				#print(len(path) * '---', file)
 
 				# - Load from json file
-				status= self.load_data_from_json_file(filename_fullpath)
+				status= self.load_data_from_json_file(filename_fullpath,root)
 				if status<0:
 					logger.warn("Failed to load data from file %s ..." % filename_fullpath)
 					continue
