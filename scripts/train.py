@@ -335,7 +335,7 @@ class SourceDataset(utils.Dataset):
 		good_masks= True
 				
 		for obj_dict in d['objs']:
-			mask_path= obj_dict['mask']
+			mask_path= os.path.join(rootdir,obj_dict['mask'])
 			mask_fullpath= os.path.abspath(mask_path)
 			valid_img= (os.path.isfile(mask_fullpath) and mask_fullpath.endswith('.fits'))
 			if not valid_img:
