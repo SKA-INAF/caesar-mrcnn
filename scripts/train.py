@@ -234,7 +234,7 @@ class SourceDataset(utils.Dataset):
 	# ================================================================
 	# ==   LOAD DATASET FROM ASCII (row format: file,mask,class_id)
 	# ================================================================
-	def load_dataset(self, dataset, nmaximgs=-1):
+	def load_data_from_list(self, dataset, nmaximgs=-1):
 		""" Load a subset of the source dataset.
 				dataset_dir: Root directory of the dataset.
 		"""
@@ -297,9 +297,78 @@ class SourceDataset(utils.Dataset):
 		return 0
 
 	# ================================================================
+	# ==   LOAD DATASET FROM JSON
+	# ================================================================
+	def load_data_from_json_file(self, filename):
+		""" Load dataset specified in a json file """
+
+		# - Read json file
+		try:
+			json_file = open(filename)
+		except IOError:
+			logger.error("Failed to open file %s, skip it..." % filename)
+			return -1
+	
+		# - Read obj info
+		d= json.load(json_file)				
+		#print(d)
+					
+		img_path= d['img']
+		img_fullpath= os.path.abspath(img_path)
+		img_path_base= os.path.basename(img_fullpath)
+		img_path_base_noext= os.path.splitext(img_path_base)[0]
+		img_id= str(uuid.uuid1())
+
+		valid_img= (os.path.isfile(img_fullpath) and img_fullpath.endswith('.fits'))
+		if not valid_img:
+			logger.warn("Image file %s does not exist or has unexpected extension (.fits required)" % img_fullpath)
+			return -1
+	
+		nobjs= len(d['objs'])
+		logger.debug("#%d objects present in file %s ..." % filename)
+				
+		mask_paths= []
+		class_ids= []	
+		good_masks= True
+				
+		for obj_dict in d['objs']:
+			mask_path= obj_dict['mask']
+			mask_fullpath= os.path.abspath(mask_path)
+			valid_img= (os.path.isfile(mask_fullpath) and mask_fullpath.endswith('.fits'))
+			if not valid_img:
+				good_masks= False
+				break
+
+			class_name= obj_dict['class']
+			class_id= 0
+			if class_name in self.class_id_map:
+				class_id= self.class_id_map.get(class_name)
+			else:
+				logger.warn("Image file %s class name (%s) is not present in dictionary, skip it..." % (img_fullpath,class_name))
+				continue	
+
+			mask_paths.append(mask_fullpath)
+			class_ids.append(class_id)
+				
+		if not good_masks:
+			logger.error("One or more mask of file %s does not exist or have unexpected extension (.fits required)" % img_fullpath)
+			return -1
+					
+		# - Add image & mask informations in dataset class
+		self.add_image(
+    	"rg-dataset",
+			image_id=img_id,
+			path=img_fullpath,
+			path_masks=mask_paths,
+			class_ids=class_ids
+		)
+	
+		return 0
+
+	# ================================================================
 	# ==   LOAD DATASET FROM ASCII (row format: jsonfile)
 	# ================================================================
-	def load_dataset_json(self, dataset, nmaximgs):
+	def load_data_from_json_list(self, dataset, nmaximgs):
 		""" Load dataset specified in a json filelist """
 	
 		# - Read json filelist
@@ -310,71 +379,78 @@ class SourceDataset(utils.Dataset):
 			for filename in f:
 				logger.info("Loading dataset info from file %s ..." % filename)
 
-				# - Read json file
-				try:
-					json_file = open(filename)
-				except IOError:
-					logger.error("Failed to open file %s, skip it..." % filename)
-					status= -1
+				# - Load from json file
+				status= self.load_data_from_json_file(filename)
+				if status<0:
 					continue
+
+				#try:
+				#	json_file = open(filename)
+				#except IOError:
+				#	logger.error("Failed to open file %s, skip it..." % filename)
+				#	status= -1
+				#	continue
 	
 				# - Read obj info
-				d= json.load(json_file)				
-				#print(d)
+				#d= json.load(json_file)				
+				##print(d)
 					
-				img_path= d['img']
-				img_fullpath= os.path.abspath(img_path)
-				img_path_base= os.path.basename(img_fullpath)
-				img_path_base_noext= os.path.splitext(img_path_base)[0]
-				img_id= str(uuid.uuid1())
+				#img_path= d['img']
+				#img_fullpath= os.path.abspath(img_path)
+				#img_path_base= os.path.basename(img_fullpath)
+				#img_path_base_noext= os.path.splitext(img_path_base)[0]
+				#img_id= str(uuid.uuid1())
 
-				valid_img= (os.path.isfile(img_fullpath) and img_fullpath.endswith('.fits'))
-				if not valid_img:
-					logger.warn("Image file %s does not exist or has unexpected extension (.fits required)" % img_fullpath)
-					status= -1
-					continue
+				#valid_img= (os.path.isfile(img_fullpath) and img_fullpath.endswith('.fits'))
+				#if not valid_img:
+				#	logger.warn("Image file %s does not exist or has unexpected extension (.fits required)" % img_fullpath)
+				#	status= -1
+				#	continue
 	
-				nobjs= len(d['objs'])
-				logger.debug("#%d objects present in file %s ..." % filename)
+				#nobjs= len(d['objs'])
+				#logger.debug("#%d objects present in file %s ..." % filename)
 				
-				mask_paths= []
-				class_ids= []	
-				good_masks= True
+				#mask_paths= []
+				#class_ids= []	
+				#good_masks= True
 				
-				for obj_dict in d['objs']:
-					mask_path= obj_dict['mask']
-					mask_fullpath= os.path.abspath(mask_path)
-					valid_img= (os.path.isfile(mask_fullpath) and mask_fullpath.endswith('.fits'))
-					if not valid_img:
-						good_masks= False
-						break
+				#for obj_dict in d['objs']:
+				#	mask_path= obj_dict['mask']
+				#	mask_fullpath= os.path.abspath(mask_path)
+				#	valid_img= (os.path.isfile(mask_fullpath) and mask_fullpath.endswith('.fits'))
+				#	if not valid_img:
+				#		good_masks= False
+				#		break
 
-					class_name= obj_dict['class']
-					class_id= 0
-					if class_name in self.class_id_map:
-						class_id= self.class_id_map.get(class_name)
-					else:
-						logger.warn("Image file %s class name (%s) is not present in dictionary, skip it..." % (img_fullpath,class_name))
-						status= -1
-						continue		
+				#	class_name= obj_dict['class']
+				#	class_id= 0
+				#	if class_name in self.class_id_map:
+				#		class_id= self.class_id_map.get(class_name)
+				#	else:
+				#		logger.warn("Image file %s class name (%s) is not present in dictionary, skip it..." % (img_fullpath,class_name))
+				#		status= -1
+				#		continue		
 
-					mask_paths.append(mask_fullpath)
-					class_ids.append(class_id)
+				#	mask_paths.append(mask_fullpath)
+				#	class_ids.append(class_id)
 				
-				if not good_masks:
-					logger.error("One or more mask of file %s does not exist or have unexpected extension (.fits required)" % img_fullpath)
-					status= -1
-					continue
+				#if not good_masks:
+				#	logger.error("One or more mask of file %s does not exist or have unexpected extension (.fits required)" % img_fullpath)
+				#	status= -1
+				#	continue
 					
 
-				# - Add image & mask informations in dataset class
-				self.add_image(
-        	"rg-dataset",
-					image_id=img_id,
-					path=img_fullpath,
-					path_masks=mask_paths,
-					class_ids=class_ids
-				)
+				## - Add image & mask informations in dataset class
+				#self.add_image(
+        #	"rg-dataset",
+				#	image_id=img_id,
+				#	path=img_fullpath,
+				#	path_masks=mask_paths,
+				#	class_ids=class_ids
+				#)
+
+				
+
 				img_counter+= 1
 				if nmaximgs!=-1 and img_counter>=nmaximgs:
 					logger.info("Max number (%d) of desired images reached, stop loading ..." % nmaximgs)
@@ -392,7 +468,7 @@ class SourceDataset(utils.Dataset):
 	# ========================================================================
 	# ==   LOAD DATASET FROM ASCII FOUND RECURSIVELY STARTING FROM TOPDIR
 	# =========================================================================
-	def load_dataset_json_recursively(self, topdir, nmaximgs):
+	def load_data_from_json_search(self, topdir, nmaximgs):
 		""" Load dataset found in json files recursively """
 	
 		# - Check topdir exists
@@ -411,11 +487,15 @@ class SourceDataset(utils.Dataset):
 			for filename in sorted(files):
 				if not filename.endswith(".json"):
 					continue
-				print(os.path.join(root, filename))
+				filename_fullpath= os.path.join(root, filename)
+				logging.debug("")
 				#print(len(path) * '---', file)
 
-				# ...
-				# ...
+				# - Load from json file
+				status= self.load_data_from_json_file(filename_fullpath)
+				if status<0:
+					logger.warn("Failed to load data from file %s ..." % filename_fullpath)
+					continue
 
 				img_counter+= 1		
 				if nmaximgs!=-1 and img_counter>=nmaximgs:
@@ -545,24 +625,24 @@ def train(args,model,config):
 	dataset_val.set_class_dict(args.classdict)
 
 	if args.dataloader=='datalist':
-		if dataset_train.load_dataset(args.datalist, args.maxnimgs)<0:
+		if dataset_train.load_data_from_list(args.datalist, args.maxnimgs)<0:
 			logger.error("Failed to load train dataset (see logs)...")
 			return -1
-		if dataset_val.load_dataset(args.datalist, args.maxnimgs)<0:
+		if dataset_val.load_data_from_list(args.datalist, args.maxnimgs)<0:
 			logger.error("Failed to load validation dataset (see logs)...")
 			return -1
 	elif args.dataloader=='datalist_json':
-		if dataset_train.load_dataset_json(args.datalist, args.maxnimgs)<0:
+		if dataset_train.load_data_from_json_list(args.datalist, args.maxnimgs)<0:
 			logger.error("Failed to load train dataset (see logs)...")
 			return -1
-		if dataset_val.load_dataset_json(args.datalist, args.maxnimgs)<0:
+		if dataset_val.load_data_from_json_list(args.datalist, args.maxnimgs)<0:
 			logger.error("Failed to load validation dataset (see logs)...")
 			return -1
 	elif args.dataloader=='datadir':
-		if dataset_train.load_dataset_json_recursively(args.datadir, args.maxnimgs)<0:
+		if dataset_train.load_data_from_json_search(args.datadir, args.maxnimgs)<0:
 			logger.error("Failed to load train dataset (see logs)...")
 			return -1
-		if dataset_val.load_dataset_json_recursively(args.datadir, args.maxnimgs)<0:
+		if dataset_val.load_data_from_json_search(args.datadir, args.maxnimgs)<0:
 			logger.error("Failed to load validation dataset (see logs)...")
 			return -1
 	else:
@@ -607,15 +687,15 @@ def test(args,model,config):
 	dataset.set_class_dict(args.classdict)
 
 	if args.dataloader=='datalist':
-		if dataset.load_dataset(args.datalist, args.maxnimgs)<0:
+		if dataset.load_data_from_list(args.datalist, args.maxnimgs)<0:
 			logger.error("Failed to load test dataset (see logs)...")
 			return -1
 	elif args.dataloader=='datalist_json':
-		if dataset.load_dataset_json(args.datalist, args.maxnimgs)<0:
+		if dataset.load_data_from_json_list(args.datalist, args.maxnimgs)<0:
 			logger.error("Failed to load test dataset (see logs)...")
 			return -1
 	elif args.dataloader=='datadir':
-		if dataset.load_dataset_json_recursively(args.datadir, args.maxnimgs)<0:
+		if dataset.load_data_from_json_search(args.datadir, args.maxnimgs)<0:
 			logger.error("Failed to load test dataset (see logs)...")
 			return -1
 	else:
