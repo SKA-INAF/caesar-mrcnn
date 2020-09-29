@@ -179,17 +179,18 @@ class SourceDataset(utils.Dataset):
 	def __init__(self):
 		utils.Dataset.__init__(self)
 	
-		self.class_id_map= {
-			'bkg': 0,
-			'sidelobe': 1,
-			'source': 2,
-			'galaxy': 3
-		}
+		self.class_id_map= {}
+		#self.class_id_map= {
+		#	'bkg': 0,
+		#	'sidelobe': 1,
+		#	'source': 2,
+		#	'galaxy': 3
+		#}
 		
 		# - Add classes
-		self.add_class("rg-dataset", 1, "sidelobe")
-		self.add_class("rg-dataset", 2, "source")
-		self.add_class("rg-dataset", 3, "galaxy")
+		#self.add_class("rg-dataset", 1, "sidelobe")
+		#self.add_class("rg-dataset", 2, "source")
+		#self.add_class("rg-dataset", 3, "galaxy")
 		
 	# ================================================================
 	# ==   INIT
@@ -215,8 +216,8 @@ class SourceDataset(utils.Dataset):
 		print(self.class_id_map)		
 
 		# - Reset class info (defined in parent class) and add new entries defined in dictionary
-		logger.info("Reset class info ...")
-		self.class_info= [{"source": "", "id": 0, "name": "BG"}]
+		#logger.info("Reset class info ...")
+		#self.class_info= [{"source": "", "id": 0, "name": "BG"}]
 
 		for class_name in self.class_id_map:
 			class_id= self.class_id_map[class_name]
@@ -266,7 +267,11 @@ class SourceDataset(utils.Dataset):
 				# - Add image				
 				class_id= 0
 				if class_name in self.class_id_map:
-					class_id= self.class_id_map.get(class_name)					
+					class_id= self.class_id_map.get(class_name)	
+				else:
+					logger.warn("Image file %s class name (%s) is not present in dictionary, skip it..." % (filename,class_name))
+					status= -1
+					continue				
 
 				self.add_image(
         	"rg-dataset",
@@ -347,6 +352,11 @@ class SourceDataset(utils.Dataset):
 					class_id= 0
 					if class_name in self.class_id_map:
 						class_id= self.class_id_map.get(class_name)
+					else:
+						logger.warn("Image file %s class name (%s) is not present in dictionary, skip it..." % (img_fullpath,class_name))
+						status= -1
+						continue		
+
 					mask_paths.append(mask_fullpath)
 					class_ids.append(class_id)
 				
