@@ -410,7 +410,7 @@ class SourceDataset(utils.Dataset):
 				if not file.endswith(".json"):
 					continue
 				print(os.path.join(root, file))
-				print(len(path) * '---', file)
+				#print(len(path) * '---', file)
 
 				# ...
 				# ...
