@@ -542,7 +542,7 @@ def train(args,model,config):
 #        TEST
 ############################################################
 
-def test(args,model):
+def test(args,model,config):
 	""" Test the model on input dataset """  
 
 	# - Create the dataset
@@ -752,7 +752,7 @@ def main():
 	if args.command == "train":
 		train(args,model,config)
 	elif args.command == "test":
-		test(args,model)	
+		test(args,model,config)	
 	
 	return 0
 
