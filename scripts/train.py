@@ -195,25 +195,38 @@ class SourceDataset(utils.Dataset):
 	# ================================================================
 	# ==   LOAD DATASET FROM ASCII (row format: file,mask,class_id)
 	# ================================================================
-	def load_dataset(self, dataset):
+	def load_dataset(self, dataset, nmaximgs=-1):
 		""" Load a subset of the source dataset.
 				dataset_dir: Root directory of the dataset.
 		"""
 		 
 		# - Read dataset
+		img_counter= 0
+		status= 0
+
 		with open(dataset,'r') as f:
 		
 			for line in f:
 				line_split = line.strip().split(',')
 				(filename,filename_mask,class_name) = line_split
 
-				# - Get paths
+				# - Get and check paths
 				filename_fullpath= os.path.abspath(filename)
-				#filename_base= os.path.basename(filename_fullpath)
-				#filename_base_noext= os.path.splitext(filename_base)[0]	
 				filename_mask_fullpath= os.path.abspath(filename_mask)
 				image_id= str(uuid.uuid1())
-				
+
+				valid_img= (os.path.isfile(filename_fullpath) and filename_fullpath.endswith('.fits'))
+				valid_mask= (os.path.isfile(filename_mask_fullpath) and filename_mask_fullpath.endswith('.fits'))
+				if not valid_img:
+					logger.warn("Image file %s does not exist or has unexpected extension (.fits required)" % filename)
+					status= -1
+					continue
+				if not valid_mask:
+					logger.warn("Mask file %s does not exist or has unexpected extension (.fits required)" % filename_mask)
+					status= -1
+					continue
+
+				# - Add image				
 				class_id= 0
 				if class_name in self.class_id_map:
 					class_id= self.class_id_map.get(class_name)					
@@ -226,14 +239,30 @@ class SourceDataset(utils.Dataset):
 					path_masks=[filename_mask_fullpath],
 					class_ids=[class_id]
 				)
+				img_counter+= 1
+				if nmaximgs!=-1 and img_counter>=nmaximgs:
+					logger.info("Max number (%d) of desired images reached, stop loading ..." % nmaximgs)
+					break
+
+		if status<0:
+			logger.warn("One or more files have been skipped...")
+		if img_counter<=0:
+			logger.error("All files in list have been skipped!")		
+			return -1
+		logger.info("#%d images added in dataset..." % img_counter)
+
+		return 0
 
 	# ================================================================
 	# ==   LOAD DATASET FROM ASCII (row format: jsonfile)
 	# ================================================================
-	def load_dataset_json(self, dataset):
+	def load_dataset_json(self, dataset, nmaximgs):
 		""" Load dataset specified in a json filelist """
 	
 		# - Read json filelist
+		img_counter= 0
+		status= 0
+
 		with open(dataset,'r') as f:
 			for filename in f:
 				logger.info("Loading dataset info from file %s ..." % filename)
@@ -243,34 +272,53 @@ class SourceDataset(utils.Dataset):
 					json_file = open(filename)
 				except IOError:
 					logger.error("Failed to open file %s, skip it..." % filename)
+					status= -1
 					continue
 	
 				# - Read obj info
 				d= json.load(json_file)				
-				print(d)
+				#print(d)
 					
 				img_path= d['img']
 				img_fullpath= os.path.abspath(img_path)
 				img_path_base= os.path.basename(img_fullpath)
 				img_path_base_noext= os.path.splitext(img_path_base)[0]
 				img_id= str(uuid.uuid1())
+
+				valid_img= (os.path.isfile(img_fullpath) and img_fullpath.endswith('.fits'))
+				if not valid_img:
+					logger.warn("Image file %s does not exist or has unexpected extension (.fits required)" % img_fullpath)
+					status= -1
+					continue
 	
 				nobjs= len(d['objs'])
-				logger.info("#%d objects present in file %s ..." % filename)
+				logger.debug("#%d objects present in file %s ..." % filename)
 				
 				mask_paths= []
 				class_ids= []	
+				good_masks= True
 				
 				for obj_dict in d['objs']:
 					mask_path= obj_dict['mask']
 					mask_fullpath= os.path.abspath(mask_path)
+					valid_img= (os.path.isfile(mask_fullpath) and mask_fullpath.endswith('.fits'))
+					if not valid_img:
+						good_masks= False
+						break
+
 					class_name= obj_dict['class']
 					class_id= 0
 					if class_name in self.class_id_map:
-						class_id= self.class_id_map.get(class_name)	
+						class_id= self.class_id_map.get(class_name)
 					mask_paths.append(mask_fullpath)
 					class_ids.append(class_id)
 				
+				if not good_masks:
+					logger.error("One or more mask of file %s does not exist or have unexpected extension (.fits required)" % img_fullpath)
+					status= -1
+					continue
+					
+
 				# - Add image & mask informations in dataset class
 				self.add_image(
         	"rg-dataset",
@@ -279,7 +327,54 @@ class SourceDataset(utils.Dataset):
 					path_masks=mask_paths,
 					class_ids=class_ids
 				)
-		
+				img_counter+= 1
+				if nmaximgs!=-1 and img_counter>=nmaximgs:
+					logger.info("Max number (%d) of desired images reached, stop loading ..." % nmaximgs)
+					break
+
+		if status<0:
+			logger.warn("One or more files have been skipped...")
+		if img_counter<=0:
+			logger.error("All files in list have been skipped!")		
+			return -1
+		logger.info("#%d images added in dataset..." % img_counter)
+
+		return 0
+
+	# ========================================================================
+	# ==   LOAD DATASET FROM ASCII FOUND RECURSIVELY STARTING FROM TOPDIR
+	# =========================================================================
+	def load_dataset_json_recursively(self, topdir, nmaximgs):
+		""" Load dataset found in json files recursively """
+	
+		# - Check topdir exists
+		if not os.path.isdir():
+			logger.error("Directory %d does not exists on filesystem!" % topdir)
+			return -1			
+
+		# - Traverse dir and search for json files
+		img_counter= 0
+
+		for root, dirs, files in os.walk(topdir):
+			path = root.split(os.sep)
+			print((len(path) - 1) * '---', os.path.basename(root))
+			for file in files:
+				if not file.endswith(".json"):
+					continue
+				print(os.path.join(root, file))
+				print(len(path) * '---', file)
+
+				# ...
+				# ...
+
+				img_counter+= 1		
+				if nmaximgs!=-1 and img_counter>=nmaximgs:
+					logger.info("Max number (%d) of desired images reached, stop loading ..." % nmaximgs)
+					break
+
+
+		return 0
+
 	# ================================================================
 	# ==   LOAD GT MASKS (multiple objects per image)
 	# ================================================================
@@ -387,14 +482,37 @@ def train(args,model,config):
 	nepochs= args.nepochs
 	nthreads= args.nthreads    
 
-	# - Training dataset.
+	# - Load training/validation dataset
+	logger.info("Loading train & validation dataset ...")
 	dataset_train = SourceDataset()
-	dataset_train.load_dataset(args.dataset)
-	dataset_train.prepare()
-
-	# - Validation dataset
 	dataset_val = SourceDataset()
-	dataset_val.load_dataset(args.dataset)
+
+	if args.dataloader=='datalist':
+		if dataset_train.load_dataset(args.dataset, args.maxnimgs)<0:
+			logger.error("Failed to load train dataset (see logs)...")
+			return -1
+		if dataset_val.load_dataset(args.dataset, args.maxnimgs)<0:
+			logger.error("Failed to load validation dataset (see logs)...")
+			return -1
+	elif args.dataloader=='datalist_json':
+		if dataset_train.load_dataset_json(args.dataset, args.maxnimgs)<0:
+			logger.error("Failed to load train dataset (see logs)...")
+			return -1
+		if dataset_val.load_dataset_json(args.dataset, args.maxnimgs)<0:
+			logger.error("Failed to load validation dataset (see logs)...")
+			return -1
+	elif args.dataloader=='datadir':
+		if dataset_train.load_dataset_json_recursively(args.datadir, args.maxnimgs)<0:
+			logger.error("Failed to load train dataset (see logs)...")
+			return -1
+		if dataset_val.load_dataset_json_recursively(args.datadir, args.maxnimgs)<0:
+			logger.error("Failed to load validation dataset (see logs)...")
+			return -1
+	else:
+		logger.error("Invalid/unknown dataloader (%s) for training!" % args.dataloader)
+		return -1
+
+	dataset_train.prepare()
 	dataset_val.prepare()
 
 	# - Image augmentation
@@ -418,6 +536,8 @@ def train(args,model,config):
 		n_worker_threads=nthreads
 	)
 
+	return 0
+
 ############################################################
 #        TEST
 ############################################################
@@ -427,14 +547,30 @@ def test(args,model):
 
 	# - Create the dataset
 	dataset = SourceDataset()
-	dataset.load_dataset(args.dataset)
+	if args.dataloader=='datalist':
+		if dataset.load_dataset(args.dataset, args.maxnimgs)<0:
+			logger.error("Failed to load test dataset (see logs)...")
+			return -1
+	elif args.dataloader=='datalist_json':
+		if dataset.load_dataset_json(args.dataset, args.maxnimgs)<0:
+			logger.error("Failed to load test dataset (see logs)...")
+			return -1
+	elif args.dataloader=='datadir':
+		if dataset.load_dataset_json_recursively(args.datadir, args.maxnimgs)<0:
+			logger.error("Failed to load test dataset (see logs)...")
+			return -1
+	else:
+		logger.error("Invalid/unknown dataloader (%s) for testing!" % args.dataloader)
+		return -1
+
 	dataset.prepare()
 
 	# - Test model on dataset
 	tester= ModelTester(model,config,dataset)	
-	tester.score_thr= args.scoreThr_test
-	tester.iou_thr= args.iouThr_test
-	tester.n_max_img= args.nimg_test
+	tester.score_thr= args.scoreThr
+	tester.iou_thr= args.iouThr
+	tester.n_max_img= args.maxnimgs
+	#tester.n_max_img= args.nimg_test
 
 	tester.test()
 
@@ -450,25 +586,81 @@ def parse_args():
 	parser = argparse.ArgumentParser(description='Train Mask R-CNN to detect radio sources.')
 
 	parser.add_argument("command",metavar="<command>",help="'train' or 'test'")
-	parser.add_argument('--dataset', required=False,metavar="/path/to/dataset/",help='Directory of the source dataset')
+
+	# - COMMON OPTIONS
+	parser.add_argument('--dataloader',required=False,metavar="Data loader type",type=str,default='filelist',help='Train/test data loader type {datalist,datalist_json,datadir_json,image}')
+	parser.add_argument('--datalist', required=False,metavar="/path/to/dataset",help='Train/test data filelist with format: filename_img,filename_mask,label or: filename_json')
+	parser.add_argument('--datadir', required=False,metavar="/path/to/dataset",help='Train/test data top dir traversed to search json dataset files')
+	parser.add_argument('--maxnimgs', required=False,metavar="",type=int,default=-1,help="Max number of images to consider in dataset (-1=all) (default=-1)")
 	parser.add_argument('--weights', required=False,metavar="/path/to/weights.h5",help="Path to weights .h5 file")
 	parser.add_argument('--logs', required=False,default=DEFAULT_LOGS_DIR,metavar="/path/to/logs/",help='Logs and checkpoints directory (default=logs/)')
-	parser.add_argument('--image', required=False,metavar="path or URL to image",help='Image to apply the color splash effect on')
+	parser.add_argument('--nthreads', required=False,default=1,type=int,metavar="Number of worker threads",help="Number of worker threads")
+
+	# - TRAIN OPTIONS
+	parser.add_argument('--ngpu', required=False,default=1,type=int,metavar="Number of GPUs",help='Number of GPUs')
+	parser.add_argument('--nimg_per_gpu', required=False,default=1,type=int,metavar="Number of images per gpu",help='Number of images per gpu')
 	parser.add_argument('--nepochs', required=False,default=10,type=int,metavar="Number of training epochs",help='Number of training epochs')
 	parser.add_argument('--epoch_length', required=False,default=10,type=int,metavar="Number of data batches per epoch",help='Number of data batches per epoch')
 	parser.add_argument('--nvalidation_steps', required=False,default=50,type=int,metavar="Number of validation steps per epoch",help='Number of validation steps per epoch')
-	parser.add_argument('--ngpu', required=False,default=1,type=int,metavar="Number of GPUs",help='Number of GPUs')
-	parser.add_argument('--nimg_per_gpu', required=False,default=1,type=int,metavar="Number of images per gpu",help='Number of images per gpu')
-	parser.add_argument('--weighttype', required=False,default='',metavar="Type of weights",help="Type of weights")
-	parser.add_argument('--nthreads', required=False,default=1,type=int,metavar="Number of worker threads",help="Number of worker threads")
-	parser.add_argument('--nimg_test', required=False,default=-1,type=int,metavar="Number of images in dataset to inspect during test",help="Number of images in dataset to inspect during test")	
-	parser.add_argument('--scoreThr_test', required=False,default=0.7,type=float,metavar="Object detection score threshold to be used during test",help="Object detection score threshold to be used during test")
-	parser.add_argument('--iouThr_test', required=False,default=0.6,type=float,metavar="IOU threshold used to match detected objects with true objects",help="IOU threshold used to match detected objects with true objects")
+			
+	# - TEST OPTIONS
+	#parser.add_argument('--image', required=False,metavar="path or URL to image",help='Image to apply the model')	
+	#parser.add_argument('--nimg_test', required=False,default=-1,type=int,metavar="Number of images in dataset to inspect during test",help="Number of images in dataset to inspect during test")	
+	parser.add_argument('--scoreThr', required=False,default=0.7,type=float,metavar="Object detection score threshold to be used during test",help="Object detection score threshold to be used during test")
+	parser.add_argument('--iouThr', required=False,default=0.6,type=float,metavar="IOU threshold used to match detected objects with true objects",help="IOU threshold used to match detected objects with true objects")
 
 	args = parser.parse_args()
 
 	#return vars(args)
 	return args
+
+
+def validate_args(args):
+	""" Validate arguments """
+	
+	# - Check commands
+	if args.command != "train" and args.command != "test":
+		logger.error("Unknow command (%s) given, only train/test supported!" % args.command)
+		return -1
+
+	# - Check data loaders
+	if args.dataloader=='datalist' or args.dataloader=='datalist_json':
+		has_datalist= (args.datalist and args.datalist!="")
+		if not has_datalist:
+			logger.error("Argument --datalist is required for training with datalist data loader!")
+			return -1
+	elif args.dataloader=='datadir_json':
+		has_datadir= (args.datadir and args.datadir!="")
+		dir_exist= os.path.isdir(args.datadir)
+		if not has_datadir:
+			logger.error("Argument --datadir is required for training with datadir data loader!")
+			return -1
+		if not dir_exist:
+			logger.error("Datadir argument must be a directory existing on filesystem!")
+			return -1
+	#elif args.dataloader=='image':
+	#	has_image= (args.image and args.image!="")
+	#	image_exists= os.path.isfile(args.image)
+	#	valid_extension= args.image.endswith('.fits'):
+	#	if not has_image:
+	#		logger.error("Argument --image is required for image data loader!")
+	#		return -1
+	#	if not image_exists:
+	#		logger.error("Image argument must be an existing image on filesystem!")
+	#		return -1
+	#	if not valid_extension:
+	#		logger.error("Image must have .fits extension!")
+	#		return -1
+
+	# - Check maxnimgs
+	if args.maxnimgs==0 or (args.maxnimgs<0 and args.maxnimgs!=-1):
+		logger.error("Invalid maxnimgs given (hint: give -1 or >0)!")
+		return -1
+
+	# - Check weight file exists
+	# ...
+
+	return 0
 
 ############################################################
 #       MAIN
@@ -490,24 +682,20 @@ def main():
 	#==   VALIDATE ARGS
 	#===========================
 	logger.info("Validating script args ...")
-	if args.command == "train":
-		assert args.dataset, "Argument --dataset is required for training"
-	elif args.command == "test":
-		assert args.dataset, "Argument --dataset is required for testing"
-	else:
-		logger.error("Unknown command given (%s), valid commands are {train,test}!" % args.command)
+	if validate_args(args)<0:
+		logger.error("Argument validation failed, exit...")
 		return 1
 
 	print("Weights: ", args.weights)
-	print("Dataset: ", args.dataset)
+	print("Datalist: ", args.datalist)
 	print("Logs: ", args.logs)
 	print("nEpochs: ",args.nepochs)
 	print("epoch_length: ",args.epoch_length)
 	print("nvalidation_steps: ",args.nvalidation_steps)
 	print("ngpu: ",args.ngpu)
 	print("nimg_per_gpu: ",args.nimg_per_gpu)
-	print("nimg_test: ",args.nimg_test)
-	print("scoreThr_test: ",args.scoreThr_test)
+	#print("nimg_test: ",args.nimg_test)
+	print("scoreThr: ",args.scoreThr)
 
 	weights_path = args.weights
 
