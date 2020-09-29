@@ -488,17 +488,17 @@ def train(args,model,config):
 	dataset_val = SourceDataset()
 
 	if args.dataloader=='datalist':
-		if dataset_train.load_dataset(args.dataset, args.maxnimgs)<0:
+		if dataset_train.load_dataset(args.datalist, args.maxnimgs)<0:
 			logger.error("Failed to load train dataset (see logs)...")
 			return -1
-		if dataset_val.load_dataset(args.dataset, args.maxnimgs)<0:
+		if dataset_val.load_dataset(args.datalist, args.maxnimgs)<0:
 			logger.error("Failed to load validation dataset (see logs)...")
 			return -1
 	elif args.dataloader=='datalist_json':
-		if dataset_train.load_dataset_json(args.dataset, args.maxnimgs)<0:
+		if dataset_train.load_dataset_json(args.datalist, args.maxnimgs)<0:
 			logger.error("Failed to load train dataset (see logs)...")
 			return -1
-		if dataset_val.load_dataset_json(args.dataset, args.maxnimgs)<0:
+		if dataset_val.load_dataset_json(args.datalist, args.maxnimgs)<0:
 			logger.error("Failed to load validation dataset (see logs)...")
 			return -1
 	elif args.dataloader=='datadir':
@@ -548,11 +548,11 @@ def test(args,model):
 	# - Create the dataset
 	dataset = SourceDataset()
 	if args.dataloader=='datalist':
-		if dataset.load_dataset(args.dataset, args.maxnimgs)<0:
+		if dataset.load_dataset(args.datalist, args.maxnimgs)<0:
 			logger.error("Failed to load test dataset (see logs)...")
 			return -1
 	elif args.dataloader=='datalist_json':
-		if dataset.load_dataset_json(args.dataset, args.maxnimgs)<0:
+		if dataset.load_dataset_json(args.datalist, args.maxnimgs)<0:
 			logger.error("Failed to load test dataset (see logs)...")
 			return -1
 	elif args.dataloader=='datadir':
