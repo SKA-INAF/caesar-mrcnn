@@ -488,7 +488,6 @@ class SourceDataset(utils.Dataset):
 				if not filename.endswith(".json"):
 					continue
 				filename_fullpath= os.path.join(root, filename)
-				logging.debug("")
 				#print(len(path) * '---', file)
 
 				# - Load from json file
