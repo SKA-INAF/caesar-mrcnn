@@ -191,6 +191,41 @@ class SourceDataset(utils.Dataset):
 		self.add_class("rg-dataset", 2, "source")
 		self.add_class("rg-dataset", 3, "galaxy")
 		
+	# ================================================================
+	# ==   INIT
+	# ================================================================
+	def set_class_dict(self, class_dict_str):
+		""" Set class dictionary from json string """
+
+		# - Check
+		if class_dict_str=="":
+			logger.error("Empty string given!")
+			return -1
+
+		# - Set class id dictionary
+		logger.info("Set class id dictionary ...")
+		class_dict= {}
+		try:
+			class_dict= json.loads(class_dict_str)
+		except:
+			logger.error("Failed to get dictionary from string!")
+			return -1
+		self.class_id_map= class_dict
+		
+		print(self.class_id_map)		
+
+		# - Reset class info (defined in parent class) and add new entries defined in dictionary
+		logger.info("Reset class info ...")
+		self.class_info= [{"source": "", "id": 0, "name": "bkg"}]
+
+		for class_name in self.class_id_map:
+			class_id= self.class_id_map[class_name]
+			self.add_class("rg-dataset", class_id, class_name)
+			
+		# - Append bkg item (if not given in input)
+		self.class_id_map['bkg']= 0
+	
+		return 0
 
 	# ================================================================
 	# ==   LOAD DATASET FROM ASCII (row format: file,mask,class_id)
@@ -485,7 +520,10 @@ def train(args,model,config):
 	# - Load training/validation dataset
 	logger.info("Loading train & validation dataset ...")
 	dataset_train = SourceDataset()
+	dataset_train.set_class_dict(args.classdict)
+
 	dataset_val = SourceDataset()
+	dataset_val.set_class_dict(args.classdict)
 
 	if args.dataloader=='datalist':
 		if dataset_train.load_dataset(args.datalist, args.maxnimgs)<0:
@@ -547,6 +585,8 @@ def test(args,model,config):
 
 	# - Create the dataset
 	dataset = SourceDataset()
+	dataset.set_class_dict(args.classdict)
+
 	if args.dataloader=='datalist':
 		if dataset.load_dataset(args.datalist, args.maxnimgs)<0:
 			logger.error("Failed to load test dataset (see logs)...")
@@ -588,6 +628,7 @@ def parse_args():
 	parser.add_argument("command",metavar="<command>",help="'train' or 'test'")
 
 	# - COMMON OPTIONS
+	parser.add_argument('--classdict', dest='classdict', required=False, type=str, default='{"sidelobe":1,"source":2,"galaxy":3}',help='Class id dictionary') 
 	parser.add_argument('--dataloader',required=False,metavar="Data loader type",type=str,default='filelist',help='Train/test data loader type {datalist,datalist_json,datadir_json,image}')
 	parser.add_argument('--datalist', required=False,metavar="/path/to/dataset",help='Train/test data filelist with format: filename_img,filename_mask,label or: filename_json')
 	parser.add_argument('--datadir', required=False,metavar="/path/to/dataset",help='Train/test data top dir traversed to search json dataset files')
@@ -696,6 +737,7 @@ def main():
 	print("nimg_per_gpu: ",args.nimg_per_gpu)
 	#print("nimg_test: ",args.nimg_test)
 	print("scoreThr: ",args.scoreThr)
+	print("classdict: ",args.classdict)
 
 	weights_path = args.weights
 
@@ -703,11 +745,21 @@ def main():
 	if not weights_path or weights_path=='':
 		train_from_scratch= True
 
+	try:
+		class_dict= json.loads(args.classdict)
+	except:
+		logger.error("Failed to convert class dict string to dict!")
+		return -1	
+
+	nclasses= len(class_dict)
+	logger.info("Assuming #%d+1 classes in model from given class dictionary ..." % nclasses)
+	
 	#===========================
 	#==   CONFIG
 	#===========================
 	if args.command == "train":
 		config = SDetectorConfig()
+		config.NUM_CLASSES = nclasses + 1
 		config.GPU_COUNT = args.ngpu
 		config.IMAGES_PER_GPU = args.nimg_per_gpu
 		config.VALIDATION_STEPS = max(1, args.nvalidation_steps // (config.IMAGES_PER_GPU*config.GPU_COUNT)) # 200 validation/test images
@@ -720,6 +772,7 @@ def main():
 			GPU_COUNT = 1
 			IMAGES_PER_GPU = 1
 		config = InferenceConfig()
+		config.NUM_CLASSES = nclasses + 1
 
 	config.display()
 
