@@ -402,6 +402,7 @@ class SourceDataset(utils.Dataset):
 
 		# - Traverse dir and search for json files
 		img_counter= 0
+		stop= False
 
 		for root, dirs, files in os.walk(topdir):
 			path = root.split(os.sep)
@@ -418,7 +419,11 @@ class SourceDataset(utils.Dataset):
 				img_counter+= 1		
 				if nmaximgs!=-1 and img_counter>=nmaximgs:
 					logger.info("Max number (%d) of desired images reached, stop loading ..." % nmaximgs)
+					stop= True
 					break
+
+			if stop:
+				break
 
 
 		return 0
