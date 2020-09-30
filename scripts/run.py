@@ -39,6 +39,7 @@ from mrcnn.config import Config
 from mrcnn import model as modellib, utils
 from mrcnn import visualize
 from mrcnn.analyze import ModelTester
+from mrcnn.analyze import Analyzer
 from mrcnn.graph import Graph
 
 ## Import graphics modules
