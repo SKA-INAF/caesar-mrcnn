@@ -821,23 +821,22 @@ class Analyzer(object):
 					verts = np.fliplr(verts) - 1
 					vertexes.append(verts.tolist())
 
-				print("type(x1)")
-				print(type(x1))
-				print("type(x2)")
-				print(type(x2))
-				print("type(y1)")
-				print(type(y1))
-				print("type(y2)")
-				print(type(y2))
-				print("type(class_id)")
-				print(type(class_id))
+				#print("type(x1)")
+				#print(type(x1))
+				#print("type(x2)")
+				#print(type(x2))
+				#print("type(y1)")
+				#print(type(y1))
+				#print("type(y2)")
+				#print(type(y2))
+				#print("type(class_id)")
+				#print(type(class_id))
 			
-				
 				d= {"x1":x1,"x2":x2,"y1":y1,"y2":y2,"class_id":class_id,"class_name":class_name,"score":score,"pixels":pixels,"vertexes":vertexes}
 				results["objs"].append(d)
 	
-		print("results")
-		print(results)
+		#print("results")
+		#print(results)
 
 		# - Write to file
 		with open(outfile, 'w') as fp:
