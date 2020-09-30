@@ -883,7 +883,7 @@ def validate_args(args):
 	if args.command=='detect':
 		has_image= (args.image and args.image!="")
 		image_exists= os.path.isfile(args.image)
-		valid_extension= args.image.endswith('.fits'):
+		valid_extension= args.image.endswith('.fits')
 		if not has_image:
 			logger.error("Argument --image is required for detect task!")
 			return -1
