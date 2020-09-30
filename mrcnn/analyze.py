@@ -801,7 +801,11 @@ class Analyzer(object):
 				y1, x1, y2, x2 = self.bboxes[i]
 				score= self.scores_final[i]
 
-				
+				x1= int(x1)
+				x2= int(x2)
+				y1= int(y1)
+				y2= int(y2)
+				class_id= int(class_id)
 
 				# - Object pixels
 				mask= self.masks_final[i]
