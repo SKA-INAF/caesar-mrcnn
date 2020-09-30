@@ -804,7 +804,7 @@ def detect(args,model,config):
 	print(type(masks_det))
 	for mask in masks_det:
 		print(type(mask))
-		print(type(mask.shape))
+		print(mask.shape)
 		print(mask)
 
 	# - Save to file
