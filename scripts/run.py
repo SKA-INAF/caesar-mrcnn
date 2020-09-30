@@ -781,7 +781,7 @@ def detect(args,model,config):
 	image_id= img_path_base_noext
 	
 	# - Apply model 
-	analyzer= Analyzer(self.model,self.config)
+	analyzer= Analyzer(model,config)
 	analyzer.draw= True
 	analyzer.iou_thr= args.iouThr
 	analyzer.score_thr= args.scoreThr
