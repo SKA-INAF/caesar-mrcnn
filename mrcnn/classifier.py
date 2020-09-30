@@ -157,6 +157,11 @@ class SClassifier(object):
 
 
 	# ===========================
+	# ==     DETECT SOURCE
+	# ===========================
+
+
+	# ===========================
 	# ==     CLASSIFY SOURCE
 	# ===========================
 	def classify_source(self,sindex):	

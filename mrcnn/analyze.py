@@ -163,7 +163,7 @@ class ModelTester(object):
 		print("== CLASSIFICATION MATRIX (NORM) ==")
 		print(self.classification_matrix_norm)
 
-		print("== PURITY ==")
+		print("== PRECISION (or PURITY) ==")
 		print(self.purity)
 
 # ========================
@@ -665,7 +665,7 @@ class Analyzer(object):
 	
 			label= self.class_names[self.class_ids_final[i]]
 			score= self.scores_final[i]
-			caption = "{} {:.3f}".format(label, score)
+			caption = "{} {:.2f}".format(label, score)
 			self.captions.append(caption)
 
 
@@ -769,7 +769,7 @@ class Analyzer(object):
 		print("== SAMPLE CLASSIFICATION MATRIX (normalized) ==")
 		print(self.confusion_matrix_norm)
 
-		print("== SAMPLE PURITY ==")
+		print("== SAMPLE PRECISION (or PURITY) ==")
 		print(self.purity)
 
 
