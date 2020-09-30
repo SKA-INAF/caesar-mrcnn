@@ -785,6 +785,7 @@ def detect(args,model,config):
 	bboxes_det= analyzer.bboxes
 	scores_det= analyzer.scores_final	
 	classid_det= analyzer.class_ids_final
+	masks_det= analyzer.masks_final
 
 	# - Return if no object was detected
 	if not bboxes_det:
@@ -799,6 +800,11 @@ def detect(args,model,config):
 	print(scores_det)
 	print("classid_det")
 	print(classid_det)
+	print("masks_det")
+	print(type(masks_det))
+	for mask in masks_det:
+		print(type(mask))
+		print(mask)
 
 	# - Save to file
 	# ...
