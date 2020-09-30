@@ -78,6 +78,7 @@ class SDetectorConfig(Config):
 	##NUM_CLASSES = 1 + 5  # Background + Objects (sidelobes, sources, galaxy_C1, galaxy_C2, galaxy_C3)
 	##NUM_CLASSES = 1 + 3  # Background + Objects (sidelobes, sources, galaxy)
 	NUM_CLASSES = 1
+	CLASS_NAMES = ["bkg"]
 
 	# Number of training steps per epoch
 	#STEPS_PER_EPOCH = 16000
@@ -182,17 +183,7 @@ class SourceDataset(utils.Dataset):
 		utils.Dataset.__init__(self)
 	
 		self.class_id_map= {}
-		#self.class_id_map= {
-		#	'bkg': 0,
-		#	'sidelobe': 1,
-		#	'source': 2,
-		#	'galaxy': 3
-		#}
 		
-		# - Add classes
-		#self.add_class("rg-dataset", 1, "sidelobe")
-		#self.add_class("rg-dataset", 2, "source")
-		#self.add_class("rg-dataset", 3, "galaxy")
 		
 	# ================================================================
 	# ==   INIT
@@ -226,13 +217,13 @@ class SourceDataset(utils.Dataset):
 			self.add_class("rg-dataset", class_id, class_name)
 
 		# - Append unknown class if not given
-		self.add_class("rg-dataset", -1, "unknown")
+		#self.add_class("rg-dataset", -1, "unknown")
 
 		print(self.class_info)
 			
 		# - Append bkg & unknown item (if not given in input)
 		self.class_id_map['bkg']= 0
-		self.class_id_map['unknown']= -1
+		#self.class_id_map['unknown']= -1
 	
 		return 0
 
@@ -954,14 +945,22 @@ def main():
 		return -1	
 
 	nclasses= len(class_dict)
-	logger.info("Assuming #%d+1 classes in model from given class dictionary ..." % nclasses)
 	
+	class_names= ["bkg"]
+	for class_name in class_dict:
+		class_names.append(class_name)
+		
+	logger.info("Assuming #%d+1 classes in model from given class dictionary ..." % nclasses)
+	print("CLASS_NAMES")
+	print(class_names)
+
 	#===========================
 	#==   CONFIG
 	#===========================
 	if args.command == "train":
 		config = SDetectorConfig()
 		config.NUM_CLASSES = nclasses + 1
+		config.CLASS_NAMES = class_names
 		config.IMAGE_META_SIZE = 1 + 3 + 3 + 4 + 1 + config.NUM_CLASSES
 		config.GPU_COUNT = args.ngpu
 		config.IMAGES_PER_GPU = args.nimg_per_gpu
@@ -976,6 +975,7 @@ def main():
 			IMAGES_PER_GPU = 1
 		config = InferenceConfig()
 		config.NUM_CLASSES = nclasses + 1
+		config.CLASS_NAMES = class_names
 		config.IMAGE_META_SIZE = 1 + 3 + 3 + 4 + 1 + config.NUM_CLASSES
 	elif args.command == "detect":
 		class InferenceConfig(SDetectorConfig):
@@ -985,6 +985,7 @@ def main():
 			IMAGES_PER_GPU = 1
 		config = InferenceConfig()
 		config.NUM_CLASSES = nclasses + 1
+		config.CLASS_NAMES = class_names
 		config.IMAGE_META_SIZE = 1 + 3 + 3 + 4 + 1 + config.NUM_CLASSES
 
 	config.display()
