@@ -186,6 +186,7 @@ class Analyzer(object):
 		# - Data options
 		self.dataset= dataset
 		self.image= None
+		self.image_header= None
 		self.image_id= -1
 		self.image_path= ''
 		self.image_path_base= ''
@@ -226,6 +227,7 @@ class Analyzer(object):
 
 		# - Draw options
 		self.draw= True
+		self.write_to_json= True
 		self.class_color_map= {
 			'bkg': (0,0,0),# black
 			#'sidelobe': (1,1,0),# yellow
@@ -293,7 +295,7 @@ class Analyzer(object):
 	# ========================
 	# ==     PREDICT
 	# ========================
-	def predict(self,image,image_id='',bboxes_gt=[]):
+	def predict(self,image,image_id='',bboxes_gt=[],header=None):
 		""" Predict results on given image """
 
 		# - Throw error if image is None
@@ -304,6 +306,8 @@ class Analyzer(object):
 
 		if image_id:
 			self.image_id= image_id
+		if header:
+			self.image_header= header
 
 		# - Get detector result
 		r = self.model.detect([self.image], verbose=0)[0]
@@ -328,8 +332,15 @@ class Analyzer(object):
 		# - Draw results
 		if self.draw:
 			logger.info("Drawing results for image %s ..." % str(self.image_id))
-			outfile =  'out_' + str(self.image_id) + '.png'
+			outfile= 'out_' + str(self.image_id) + '.png'
 			self.draw_results(outfile)
+
+		# - Write json results
+		if self.write_to_json:
+			logger.info("Writing results for image %s to json ..." % str(self.image_id))
+			outfile_json= 'out_' + str(self.image_id) + '.json'
+			self.write_json_results(outfile_json)
+
 	
 		return 0
 
@@ -772,6 +783,46 @@ class Analyzer(object):
 		print("== SAMPLE PRECISION (or PURITY) ==")
 		print(self.purity)
 
+
+	# ====================================
+	# ==   WRITE RESULTS IN JSON FORMAT
+	# ====================================
+	def write_json_results(self, outfile):
+		""" Write a json file with detected objects """
+	
+		results= {"image_id":self.image_id,"objs":[]}
+
+		# - Loop over detected objects
+		if self.masks_final:
+			for i in range(len(self.masks_final)):
+				# - Get detection info
+				class_id= self.class_ids_final[i]
+				class_name= self.class_names[class_id]
+				y1, x1, y2, x2 = self.bboxes[i]
+				score= self.scores_final[i]
+				
+				# - Object pixels
+				mask= self.masks_final[i]
+				pixels= np.argwhere(mask==1).tolist()
+
+				# - Object vertex
+				padded_mask = np.zeros( (mask.shape[0] + 2, mask.shape[1] + 2), dtype=np.uint8)
+				padded_mask[1:-1, 1:-1] = mask
+				contours = find_contours(padded_mask, 0.5)
+				vertexes= []
+				for verts in contours:
+					# Subtract the padding and flip (y, x) to (x, y)
+					verts = np.fliplr(verts) - 1
+					vertexes.append(verts.tolist())
+				
+				d= {"x1":x1,"x2":x2,"y1":y1,"y2":y2,"class_id":class_id,"class_name":class_name,"score":score,"pixels":pixels,"vertexes":vertexes}
+				results["objs"].append(d)
+
+
+		# - Write to file
+		with open(outfile, 'w') as fp:
+			json.dump(results, fp,indent=2,sort_keys=True)
+		
 
 	# ========================
 	# ==   DRAW RESULTS

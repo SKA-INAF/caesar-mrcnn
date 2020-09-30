@@ -774,6 +774,7 @@ def detect(args,model,config):
 	# - Apply model 
 	analyzer= Analyzer(model,config)
 	analyzer.draw= True
+	analyzer.write_to_json= True
 	analyzer.iou_thr= args.iouThr
 	analyzer.score_thr= args.scoreThr
 
@@ -807,9 +808,7 @@ def detect(args,model,config):
 		print(mask.shape)
 		print(mask)
 
-	# - Save to file
-	# ...
-
+	
 	return 0
 
 ############################################################
