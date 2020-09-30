@@ -224,11 +224,62 @@ class SourceDataset(utils.Dataset):
 			class_id= self.class_id_map[class_name]
 			self.add_class("rg-dataset", class_id, class_name)
 
+		# - Append unknown class if not given
+		self.add_class("rg-dataset", -1, "unknown")
+
 		print(self.class_info)
 			
-		# - Append bkg item (if not given in input)
+		# - Append bkg & unknown item (if not given in input)
 		self.class_id_map['bkg']= 0
+		self.class_id_map['unknown']= -1
 	
+		return 0
+
+	# ================================================================
+	# ==   LOAD DATASET FROM IMAGE 
+	# ================================================================
+	def load_data_from_image(self, filename, filename_mask="", class_name="unknown"):
+		""" Load data from image """
+			
+		# - Check image
+		filename_fullpath= os.path.abspath(filename)
+		image_id= str(uuid.uuid1())
+		valid_img= (os.path.isfile(filename_fullpath) and filename_fullpath.endswith('.fits'))
+	
+		if not valid_img:
+			logger.error("Image file %s does not exist or has unexpected extension (.fits required)" % filename)
+			return -1
+
+		# - Check mask
+		have_mask= False
+		path_masks= []
+		if filename_mask!="":
+			filename_mask_fullpath= os.path.abspath(filename_mask)
+			if not valid_mask:
+				logger.warn("Mask file %s does not exist or has unexpected extension (.fits required)" % filename_mask)
+				return -1
+			path_masks.append(filename_mask_fullpath)
+			have_mask= True
+
+		# - Check class id	
+		class_ids= []
+		if have_mask:
+			if class_name in self.class_id_map:
+				class_id= self.class_id_map.get(class_name)	
+				class_ids.append(class_id)
+			else:
+				logger.error("Image file %s class name (%s) is not present in dictionary, skip it..." % (filename,class_name))
+				return -1
+
+		# - Add image
+		self.add_image(
+    	"rg-dataset",
+			image_id=image_id,  # use file name as a unique image id
+			path=filename_fullpath,
+			path_masks=path_masks,
+			class_ids=class_ids
+		)
+
 		return 0
 
 	# ================================================================
@@ -320,7 +371,7 @@ class SourceDataset(utils.Dataset):
 		img_path_base_noext= os.path.splitext(img_path_base)[0]
 		img_id= str(uuid.uuid1())
 	
-		logger.info("img_path=%s, img_fullpath=%s" % (img_path,img_fullpath))
+		logger.debug("img_path=%s, img_fullpath=%s" % (img_path,img_fullpath))
 
 		valid_img= (os.path.isfile(img_fullpath) and img_fullpath.endswith('.fits'))
 		if not valid_img:
@@ -451,8 +502,6 @@ class SourceDataset(utils.Dataset):
 				#	path_masks=mask_paths,
 				#	class_ids=class_ids
 				#)
-
-				
 
 				img_counter+= 1
 				if nmaximgs!=-1 and img_counter>=nmaximgs:
@@ -682,7 +731,7 @@ def train(args,model,config):
 ############################################################
 
 def test(args,model,config):
-	""" Test the model on input dataset """  
+	""" Test the model on input dataset with ground truth knowledge """  
 
 	# - Create the dataset
 	dataset = SourceDataset()
@@ -715,6 +764,54 @@ def test(args,model,config):
 
 	tester.test()
 
+	return 0
+
+############################################################
+#        DETECT
+############################################################
+def detect(args,model,config):
+	""" Test the model on input dataset with ground truth knowledge """  
+
+	# - Read image data
+	image_data, header= utils.read_fits(args.image,stretch=True,normalize=True,convertToRGB=True)
+	img_fullpath= os.path.abspath(args.image)
+	img_path_base= os.path.basename(img_fullpath)
+	img_path_base_noext= os.path.splitext(img_path_base)[0]
+	image_id= img_path_base_noext
+	
+	# - Apply model 
+	analyzer= Analyzer(self.model,self.config)
+	analyzer.draw= True
+	analyzer.iou_thr= args.iouThr
+	analyzer.score_thr= args.scoreThr
+
+	if analyzer.predict(image_data,image_id)<0:
+		logger.error("Failed to run model prediction on image %s!" % args.image)
+		return -1
+
+	# - Get results
+	bboxes_det= analyzer.bboxes
+	scores_det= analyzer.scores_final	
+	classid_det= analyzer.class_ids_final
+
+	# - Return if no object was detected
+	if not bboxes_det:
+		logger.info("No object detected in image %s ..." % args.image)
+		return 0
+	
+	# - Print results
+	logger.info("#%d objects found in image %s ..." % (len(bboxes_det),args.image))
+	print("bboxes_det")
+	print(bboxes_det)
+	print("scores_det")
+	print(scores_det)
+	print("classid_det")
+	print(classid_det)
+
+	# - Save to file
+	# ...
+
+	return 0
 
 ############################################################
 #        PARSE/VALIDATE ARGS
@@ -730,7 +827,7 @@ def parse_args():
 
 	# - COMMON OPTIONS
 	parser.add_argument('--classdict', dest='classdict', required=False, type=str, default='{"sidelobe":1,"source":2,"galaxy":3}',help='Class id dictionary') 
-	parser.add_argument('--dataloader',required=False,metavar="Data loader type",type=str,default='filelist',help='Train/test data loader type {datalist,datalist_json,datadir_json,image}')
+	parser.add_argument('--dataloader',required=False,metavar="Data loader type",type=str,default='filelist',help='Train/test data loader type {datalist,datalist_json,datadir_json}')
 	parser.add_argument('--datalist', required=False,metavar="/path/to/dataset",help='Train/test data filelist with format: filename_img,filename_mask,label or: filename_json')
 	parser.add_argument('--datadir', required=False,metavar="/path/to/dataset",help='Train/test data top dir traversed to search json dataset files')
 	parser.add_argument('--maxnimgs', required=False,metavar="",type=int,default=-1,help="Max number of images to consider in dataset (-1=all) (default=-1)")
@@ -746,10 +843,11 @@ def parse_args():
 	parser.add_argument('--nvalidation_steps', required=False,default=50,type=int,metavar="Number of validation steps per epoch",help='Number of validation steps per epoch')
 			
 	# - TEST OPTIONS
-	#parser.add_argument('--image', required=False,metavar="path or URL to image",help='Image to apply the model')	
-	#parser.add_argument('--nimg_test', required=False,default=-1,type=int,metavar="Number of images in dataset to inspect during test",help="Number of images in dataset to inspect during test")	
 	parser.add_argument('--scoreThr', required=False,default=0.7,type=float,metavar="Object detection score threshold to be used during test",help="Object detection score threshold to be used during test")
 	parser.add_argument('--iouThr', required=False,default=0.6,type=float,metavar="IOU threshold used to match detected objects with true objects",help="IOU threshold used to match detected objects with true objects")
+
+	# - DETECT OPTIONS
+	parser.add_argument('--image',required=False,metavar="Input image",type=str,help='Input image in FITS format to apply the model (used in detect task)')
 
 	args = parser.parse_args()
 
@@ -761,8 +859,8 @@ def validate_args(args):
 	""" Validate arguments """
 	
 	# - Check commands
-	if args.command != "train" and args.command != "test":
-		logger.error("Unknow command (%s) given, only train/test supported!" % args.command)
+	if args.command != "train" and args.command != "test" and args.command != "detect":
+		logger.error("Unknow command (%s) given, only train/test/detect supported!" % args.command)
 		return -1
 
 	# - Check data loaders
@@ -780,19 +878,21 @@ def validate_args(args):
 		if not dir_exist:
 			logger.error("Datadir argument must be a directory existing on filesystem!")
 			return -1
-	#elif args.dataloader=='image':
-	#	has_image= (args.image and args.image!="")
-	#	image_exists= os.path.isfile(args.image)
-	#	valid_extension= args.image.endswith('.fits'):
-	#	if not has_image:
-	#		logger.error("Argument --image is required for image data loader!")
-	#		return -1
-	#	if not image_exists:
-	#		logger.error("Image argument must be an existing image on filesystem!")
-	#		return -1
-	#	if not valid_extension:
-	#		logger.error("Image must have .fits extension!")
-	#		return -1
+
+	# - Check image arg
+	if args.command=='detect':
+		has_image= (args.image and args.image!="")
+		image_exists= os.path.isfile(args.image)
+		valid_extension= args.image.endswith('.fits'):
+		if not has_image:
+			logger.error("Argument --image is required for detect task!")
+			return -1
+		if not image_exists:
+			logger.error("Image argument must be an existing image on filesystem!")
+			return -1
+		if not valid_extension:
+			logger.error("Image must have .fits extension!")
+			return -1
 
 	# - Check maxnimgs
 	if args.maxnimgs==0 or (args.maxnimgs<0 and args.maxnimgs!=-1):
@@ -876,6 +976,15 @@ def main():
 		config = InferenceConfig()
 		config.NUM_CLASSES = nclasses + 1
 		config.IMAGE_META_SIZE = 1 + 3 + 3 + 4 + 1 + config.NUM_CLASSES
+	elif args.command == "detect":
+		class InferenceConfig(SDetectorConfig):
+			# Set batch size to 1 since we'll be running inference on
+			# one image at a time. Batch size = GPU_COUNT * IMAGES_PER_GPU
+			GPU_COUNT = 1
+			IMAGES_PER_GPU = 1
+		config = InferenceConfig()
+		config.NUM_CLASSES = nclasses + 1
+		config.IMAGE_META_SIZE = 1 + 3 + 3 + 4 + 1 + config.NUM_CLASSES
 
 	config.display()
 
@@ -885,7 +994,7 @@ def main():
 	# - Create model
 	if args.command == "train":
 		model = modellib.MaskRCNN(mode="training", config=config,model_dir=args.logs)
-	elif args.command == "test":
+	elif args.command == "test" or args.command == "detect":
 		# Device to load the neural network on.
 		# Useful if you're training a model on the same 
 		# machine, in which case use CPU and leave the
@@ -906,9 +1015,17 @@ def main():
 	#===========================
 	# - Train or evaluate
 	if args.command == "train":
-		train(args,model,config)
+		if train(args,model,config)<0:
+			logger.error("Failed to run train!")
+			return 1
 	elif args.command == "test":
-		test(args,model,config)	
+		if test(args,model,config)<0:
+			logger.error("Failed to run test!")
+			return 1
+	elif args.command == "detect":
+		if detect(args,model,config)<0:
+			logger.error("Failed to run detect!")
+			return 1		
 	
 	return 0
 
