@@ -206,7 +206,7 @@ class SourceDataset(utils.Dataset):
 			return -1
 		self.class_id_map= class_dict
 		
-		logger.info("class_id_map=%s",str(self.class_id_map))		
+		logger.info("class_id_map=%s" % str(self.class_id_map))		
 
 		# - Reset class info (defined in parent class) and add new entries defined in dictionary
 		#logger.info("Reset class info ...")
