@@ -206,7 +206,7 @@ class SourceDataset(utils.Dataset):
 			return -1
 		self.class_id_map= class_dict
 		
-		print(self.class_id_map)		
+		logger.info("class_id_map",self.class_id_map)		
 
 		# - Reset class info (defined in parent class) and add new entries defined in dictionary
 		#logger.info("Reset class info ...")
@@ -219,7 +219,7 @@ class SourceDataset(utils.Dataset):
 		# - Append unknown class if not given
 		#self.add_class("rg-dataset", -1, "unknown")
 
-		print(self.class_info)
+		logger.info("class_info",self.class_info)
 			
 		# - Append bkg & unknown item (if not given in input)
 		self.class_id_map['bkg']= 0
