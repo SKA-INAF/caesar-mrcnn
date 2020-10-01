@@ -977,8 +977,8 @@ def main():
 		class InferenceConfig(SDetectorConfig):
 			# Set batch size to 1 since we'll be running inference on
 			# one image at a time. Batch size = GPU_COUNT * IMAGES_PER_GPU
-			GPU_COUNT = 0 # don't use GPU here
-			IMAGES_PER_GPU = 0
+			GPU_COUNT = 1 # don't use GPU should be =0 but not working
+			IMAGES_PER_GPU = 1 # don't use GPU should be =0 but not working
 		config = InferenceConfig()
 		config.NUM_CLASSES = nclasses + 1
 		config.CLASS_NAMES = class_names
@@ -987,8 +987,8 @@ def main():
 		class InferenceConfig(SDetectorConfig):
 			# Set batch size to 1 since we'll be running inference on
 			# one image at a time. Batch size = GPU_COUNT * IMAGES_PER_GPU
-			GPU_COUNT = 0 # don't use GPU here
-			IMAGES_PER_GPU = 0
+			GPU_COUNT = 1 # don't use GPU should be =0 but not working
+			IMAGES_PER_GPU = 1 # don't use GPU should be =0 but not working
 		config = InferenceConfig()
 		config.NUM_CLASSES = nclasses + 1
 		config.CLASS_NAMES = class_names
