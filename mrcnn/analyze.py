@@ -234,7 +234,8 @@ class Analyzer(object):
 			'sidelobe': (1,0,0),# red
 			'source': (0,0,1),# blue
 			'galaxy': (1,1,0),# yellow	
-			'galaxy_C2': (0,0,1),# blue
+			'galaxy_C1': (1,1,0),# yellow
+			'galaxy_C2': (1,0,1),# magenta
 			'galaxy_C3': (0,1,0),# green
 		}
 
@@ -279,6 +280,8 @@ class Analyzer(object):
 
 		self.masks_gt= self.dataset.load_gt_masks(self.image_id,binary=False)
 		self.class_ids_gt = self.dataset.image_info[self.image_id]["class_ids"]
+		logger.info("class_ids_gt elements: {}".format(' '.join(map(str, self.class_ids_gt))))
+		
 		self.labels_gt= []
 		self.colors_gt= []
 		self.captions_gt= []
@@ -286,6 +289,7 @@ class Analyzer(object):
 		for item in self.class_ids_gt:
 			label= self.class_names[item]
 			color= self.class_color_map[label]
+			logger.info("label=%s" % label)	
 			self.labels_gt.append(label)
 			self.colors_gt.append(color)
 			self.captions_gt.append(label)
