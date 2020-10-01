@@ -315,7 +315,9 @@ class SourceDataset(utils.Dataset):
 				else:
 					logger.warn("Image file %s class name (%s) is not present in dictionary, skip it..." % (filename,class_name))
 					status= -1
-					continue				
+					continue		
+
+				logger.info("Adding image file %s (class=%s,id=%d)..." % (filename,class_name,class_id))		
 
 				self.add_image(
         	"rg-dataset",
