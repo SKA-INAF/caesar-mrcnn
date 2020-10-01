@@ -422,8 +422,10 @@ class Analyzer(object):
 
 				# - Extract true object id from gt mask pixel values (1=sidelobes,2=sources,3=...)
 				#   Override class_id_gt
-				object_classid= mask_gt[mask_indices[0][0],mask_indices[1][0]]
-				logger.debug("gt mask no. %d (subcomponent no. %d): object_classid=%d ..." % (k,i,object_classid))
+				# object_classid= mask_gt[mask_indices[0][0],mask_indices[1][0]] # Disabled for the moment
+				object_classid= class_id_gt
+				
+				logger.info("gt mask no. %d (subcomponent no. %d): object_classid=%d ..." % (k,i,object_classid))
 
 				masks_gt_det.append(extracted_mask)
 				class_ids_gt_det.append(object_classid)
