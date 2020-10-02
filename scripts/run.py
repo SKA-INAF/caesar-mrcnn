@@ -54,6 +54,11 @@ from matplotlib.patches import Polygon
 # through the command line argument --logs
 DEFAULT_LOGS_DIR = os.path.join(ROOT_DIR, "logs")
 
+# Suppress `Invalid 'BLANK' keyword in header.` warnings
+import warnings
+from astropy.io.fits.verify import VerifyWarning
+warnings.simplefilter('ignore', category=VerifyWarning)
+
 ############################################################
 #  Configurations
 ############################################################
