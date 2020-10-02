@@ -504,4 +504,4 @@ if __name__ == '__main__':
 		test(model)	
 	else:
 		print("'{}' is not recognized. "
-			"Use 'train' or 'test'".format(args.command))
+			  "Use 'train' or 'test'".format(args.command))
