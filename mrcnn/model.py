@@ -22,6 +22,7 @@ import keras.backend as K
 import keras.layers as KL
 import keras.engine as KE
 import keras.models as KM
+import matplotlib.pyplot as plt         # for plotting the loss vs epochs graph
 
 from mrcnn import utils
 
@@ -2367,7 +2368,7 @@ class MaskRCNN():
             else:
                 workers= n_worker_threads
 
-        self.keras_model.fit_generator(
+        history = self.keras_model.fit_generator(
             train_generator,
             initial_epoch=self.epoch,
             epochs=epochs,
@@ -2380,6 +2381,19 @@ class MaskRCNN():
             use_multiprocessing=True,
         )
         self.epoch = max(self.epoch, epochs)
+
+        # plot a loss vs epochs graph and save to disk
+        model_name = self.config.BACKBONE + '_' + str(epochs) + 'epochs'
+        plt.plot(history.history['loss'])
+        plt.plot(history.history['val_loss'])
+        plt.title(model_name + ' loss')
+        plt.ylabel('loss')
+        plt.xlabel('epochs')
+        plt.xlim(left=0)
+        plt.ylim(bottom=0)
+        plt.legend(['train loss', 'val loss'], loc='upper right')
+        plt.show()
+        plt.savefig('../' + model_name + '.png')
 
     def mold_inputs(self, images):
         """Takes a list of images and modifies them to the format expected

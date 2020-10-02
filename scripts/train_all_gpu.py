@@ -59,6 +59,11 @@ COCO_WEIGHTS_PATH = '/home/riggi/Data/MLData/NNWeights/mask_rcnn_coco.h5'
 # through the command line argument --logs
 DEFAULT_LOGS_DIR = os.path.join(ROOT_DIR, "logs")
 
+# Suppress `Invalid 'BLANK' keyword in header.` warnings
+import warnings
+from astropy.io.fits.verify import VerifyWarning
+warnings.simplefilter('ignore', category=VerifyWarning)
+
 ############################################################
 #  Configurations
 ############################################################
@@ -499,4 +504,4 @@ if __name__ == '__main__':
 		test(model)	
 	else:
 		print("'{}' is not recognized. "
-			"Use 'train' or 'test'".format(args.command))
+			  "Use 'train' or 'test'".format(args.command))
