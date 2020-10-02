@@ -846,7 +846,16 @@ def parse_args():
 	parser.add_argument('--nepochs', required=False,default=10,type=int,metavar="Number of training epochs",help='Number of training epochs')
 	parser.add_argument('--epoch_length', required=False,default=10,type=int,metavar="Number of data batches per epoch",help='Number of data batches per epoch')
 	parser.add_argument('--nvalidation_steps', required=False,default=50,type=int,metavar="Number of validation steps per epoch",help='Number of validation steps per epoch')
-			
+	parser.add_argument('--rpn_anchor_scales', dest='rpn_anchor_scales', required=False, type=str, default='2,4,8,16,32,64',help='RPN anchor scales') 
+	parser.add_argument('--max_gt_instances', dest='max_gt_instances', required=False, type=int, default=300,help='Max GT instances') 
+	parser.add_argument('--backbone', dest='backbone', required=False, type=str, default='resnet101',help='Backbone network {resnet101,resnet50} (default=resnet101)') 
+	parser.add_argument('--backbone_strides', dest='backbone_strides', required=False, type=str, default='2,4,8,16,32,64',help='Backbone strides') 
+	parser.add_argument('--rpn_nms_threshold', dest='rpn_nms_threshold', required=False, type=float, default=0.7,help='RPN Non-Maximum-Suppression threshold (default=0.7)') 
+	parser.add_argument('--rpn_train_anchors_per_image', dest='rpn_train_anchors_per_image', required=False, type=int, default=512,help='Number of anchors per image to use for RPN training (default=512)')
+	parser.add_argument('--train_rois_per_image', dest='train_rois_per_image', required=False, type=int, default=512,help='Number of ROIs per image to feed to classifier/mask heads (default=512)')
+	parser.add_argument('--rpn_anchor_ratios', dest='rpn_anchor_ratios', required=False, type=str, default='0.5,1,2',help='RPN anchor ratios') 
+	
+
 	# - TEST OPTIONS
 	parser.add_argument('--scoreThr', required=False,default=0.7,type=float,metavar="Object detection score threshold to be used during test",help="Object detection score threshold to be used during test")
 	parser.add_argument('--iouThr', required=False,default=0.6,type=float,metavar="IOU threshold used to match detected objects with true objects",help="IOU threshold used to match detected objects with true objects")
@@ -947,6 +956,10 @@ def main():
 
 	weights_path = args.weights
 
+	rpn_ancor_scales= tuple([int(x.strip()) for x in args.rpn_anchor_scales.split(',')])
+	backbone_strides= [int(x.strip()) for x in args.backbone_strides.split(',')]
+	rpn_anchor_ratios= [float(x.strip()) for x in args.rpn_anchor_ratios.split(',')]
+
 	train_from_scratch= False
 	if not weights_path or weights_path=='':
 		train_from_scratch= True
@@ -980,6 +993,7 @@ def main():
 		config.VALIDATION_STEPS = max(1, args.nvalidation_steps // (config.IMAGES_PER_GPU*config.GPU_COUNT)) # 200 validation/test images
 		config.STEPS_PER_EPOCH = ((args.epoch_length - args.nvalidation_steps) // (config.IMAGES_PER_GPU*config.GPU_COUNT)) #16439 total images
 		#config.STEPS_PER_EPOCH= args.epoch_length
+
 	elif args.command == "test":
 		class InferenceConfig(SDetectorConfig):
 			# Set batch size to 1 since we'll be running inference on
@@ -990,6 +1004,7 @@ def main():
 		config.NUM_CLASSES = nclasses + 1
 		config.CLASS_NAMES = class_names
 		config.IMAGE_META_SIZE = 1 + 3 + 3 + 4 + 1 + config.NUM_CLASSES
+
 	elif args.command == "detect":
 		class InferenceConfig(SDetectorConfig):
 			# Set batch size to 1 since we'll be running inference on
@@ -1000,6 +1015,15 @@ def main():
 		config.NUM_CLASSES = nclasses + 1
 		config.CLASS_NAMES = class_names
 		config.IMAGE_META_SIZE = 1 + 3 + 3 + 4 + 1 + config.NUM_CLASSES
+
+	# - Override some other options		
+	config.RPN_ANCHOR_SCALES= rpn_ancor_scales
+	config.MAX_GT_INSTANCES= args.max_gt_instances
+	config.BACKBONE_STRIDES= backbone_strides
+	config.RPN_NMS_THRESHOLD= args.rpn_nms_threshold
+	config.RPN_TRAIN_ANCHORS_PER_IMAGE= args.rpn_train_anchors_per_image
+	config.TRAIN_ROIS_PER_IMAGE= args.train_rois_per_image
+	config.RPN_ANCHOR_RATIOS= rpn_anchor_ratios
 
 	config.display()
 
