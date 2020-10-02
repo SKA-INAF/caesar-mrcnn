@@ -2367,7 +2367,7 @@ class MaskRCNN():
             else:
                 workers= n_worker_threads
 
-        self.keras_model.fit_generator(
+        history = self.keras_model.fit_generator(
             train_generator,
             initial_epoch=self.epoch,
             epochs=epochs,
@@ -2380,6 +2380,17 @@ class MaskRCNN():
             use_multiprocessing=True,
         )
         self.epoch = max(self.epoch, epochs)
+
+        import matplotlib.pyplot as plt
+        model_name = self.config.BACKBONE + '_' + str(epochs) + 'epochs'
+        plt.plot(history.history['loss'])
+        plt.plot(history.history['val_loss'])
+        plt.title(model_name + ' loss')
+        plt.ylabel('loss')
+        plt.xlabel('epochs')
+        plt.legend(['train loss', 'val loss'], loc='upper right')
+        plt.show()
+        plt.savefig('../' + model_name + '.png')
 
     def mold_inputs(self, images):
         """Takes a list of images and modifies them to the format expected
