@@ -188,7 +188,7 @@ class SourceDataset(utils.Dataset):
 		utils.Dataset.__init__(self)
 	
 		self.class_id_map= {}
-		
+		self.loaded_imgs= 0
 		
 	# ================================================================
 	# ==   INIT
@@ -211,7 +211,7 @@ class SourceDataset(utils.Dataset):
 			return -1
 		self.class_id_map= class_dict
 		
-		logger.info("class_id_map=%s" % str(self.class_id_map))		
+		logger.debug("class_id_map=%s" % str(self.class_id_map))		
 
 		# - Reset class info (defined in parent class) and add new entries defined in dictionary
 		#logger.info("Reset class info ...")
@@ -277,6 +277,8 @@ class SourceDataset(utils.Dataset):
 			class_ids=class_ids
 		)
 
+		self.loaded_imgs+= 1
+
 		return 0
 
 	# ================================================================
@@ -333,6 +335,7 @@ class SourceDataset(utils.Dataset):
 					class_ids=[class_id]
 				)
 				img_counter+= 1
+				self.loaded_imgs+= 1
 				if nmaximgs!=-1 and img_counter>=nmaximgs:
 					logger.info("Max number (%d) of desired images reached, stop loading ..." % nmaximgs)
 					break
@@ -437,72 +440,8 @@ class SourceDataset(utils.Dataset):
 				if status<0:
 					continue
 
-				#try:
-				#	json_file = open(filename)
-				#except IOError:
-				#	logger.error("Failed to open file %s, skip it..." % filename)
-				#	status= -1
-				#	continue
-	
-				# - Read obj info
-				#d= json.load(json_file)				
-				##print(d)
-					
-				#img_path= d['img']
-				#img_fullpath= os.path.abspath(img_path)
-				#img_path_base= os.path.basename(img_fullpath)
-				#img_path_base_noext= os.path.splitext(img_path_base)[0]
-				#img_id= str(uuid.uuid1())
-
-				#valid_img= (os.path.isfile(img_fullpath) and img_fullpath.endswith('.fits'))
-				#if not valid_img:
-				#	logger.warn("Image file %s does not exist or has unexpected extension (.fits required)" % img_fullpath)
-				#	status= -1
-				#	continue
-	
-				#nobjs= len(d['objs'])
-				#logger.debug("#%d objects present in file %s ..." % filename)
-				
-				#mask_paths= []
-				#class_ids= []	
-				#good_masks= True
-				
-				#for obj_dict in d['objs']:
-				#	mask_path= obj_dict['mask']
-				#	mask_fullpath= os.path.abspath(mask_path)
-				#	valid_img= (os.path.isfile(mask_fullpath) and mask_fullpath.endswith('.fits'))
-				#	if not valid_img:
-				#		good_masks= False
-				#		break
-
-				#	class_name= obj_dict['class']
-				#	class_id= 0
-				#	if class_name in self.class_id_map:
-				#		class_id= self.class_id_map.get(class_name)
-				#	else:
-				#		logger.warn("Image file %s class name (%s) is not present in dictionary, skip it..." % (img_fullpath,class_name))
-				#		status= -1
-				#		continue		
-
-				#	mask_paths.append(mask_fullpath)
-				#	class_ids.append(class_id)
-				
-				#if not good_masks:
-				#	logger.error("One or more mask of file %s does not exist or have unexpected extension (.fits required)" % img_fullpath)
-				#	status= -1
-				#	continue
-					
-
-				## - Add image & mask informations in dataset class
-				#self.add_image(
-        #	"rg-dataset",
-				#	image_id=img_id,
-				#	path=img_fullpath,
-				#	path_masks=mask_paths,
-				#	class_ids=class_ids
-				#)
-
 				img_counter+= 1
+				self.loaded_imgs+= 1	
 				if nmaximgs!=-1 and img_counter>=nmaximgs:
 					logger.info("Max number (%d) of desired images reached, stop loading ..." % nmaximgs)
 					break
@@ -547,7 +486,8 @@ class SourceDataset(utils.Dataset):
 					logger.warn("Failed to load data from file %s ..." % filename_fullpath)
 					continue
 
-				img_counter+= 1		
+				img_counter+= 1	
+				self.loaded_imgs+= 1		
 				if nmaximgs!=-1 and img_counter>=nmaximgs:
 					logger.info("Max number (%d) of desired images reached, stop loading ..." % nmaximgs)
 					stop= True
@@ -844,8 +784,8 @@ def parse_args():
 	parser.add_argument('--ngpu', required=False,default=1,type=int,metavar="Number of GPUs",help='Number of GPUs')
 	parser.add_argument('--nimg_per_gpu', required=False,default=1,type=int,metavar="Number of images per gpu",help='Number of images per gpu')
 	parser.add_argument('--nepochs', required=False,default=10,type=int,metavar="Number of training epochs",help='Number of training epochs')
-	parser.add_argument('--epoch_length', required=False,default=10,type=int,metavar="Number of data batches per epoch",help='Number of data batches per epoch')
-	parser.add_argument('--nvalidation_steps', required=False,default=50,type=int,metavar="Number of validation steps per epoch",help='Number of validation steps per epoch')
+	parser.add_argument('--epoch_length', required=True,type=int,metavar="Number of data batches per epoch",help='Number of data batches per epoch, usually equal to train sample size.')
+	parser.add_argument('--nvalidation_steps', required=False,default=1,type=int,metavar="Number of validation steps per epoch",help='Number of validation steps per epoch. Default is 0.')
 	parser.add_argument('--rpn_anchor_scales', dest='rpn_anchor_scales', required=False, type=str, default='2,4,8,16,32,64',help='RPN anchor scales') 
 	parser.add_argument('--max_gt_instances', dest='max_gt_instances', required=False, type=int, default=300,help='Max GT instances') 
 	parser.add_argument('--backbone', dest='backbone', required=False, type=str, default='resnet101',help='Backbone network {resnet101,resnet50} (default=resnet101)') 
@@ -950,7 +890,6 @@ def main():
 	print("nvalidation_steps: ",args.nvalidation_steps)
 	print("ngpu: ",args.ngpu)
 	print("nimg_per_gpu: ",args.nimg_per_gpu)
-	#print("nimg_test: ",args.nimg_test)
 	print("scoreThr: ",args.scoreThr)
 	print("classdict: ",args.classdict)
 
@@ -980,6 +919,9 @@ def main():
 	print("CLASS_NAMES")
 	print(class_names)
 
+	steps_per_epoch= ((args.epoch_length - args.nvalidation_steps) // (args.nimg_per_gpu*args.ngpu))
+	validation_steps_per_epoch= max(1, args.nvalidation_steps // (args.nimg_per_gpu*args.ngpu))
+	
 	#===========================
 	#==   CONFIG
 	#===========================
@@ -990,10 +932,11 @@ def main():
 		config.IMAGE_META_SIZE = 1 + 3 + 3 + 4 + 1 + config.NUM_CLASSES
 		config.GPU_COUNT = args.ngpu
 		config.IMAGES_PER_GPU = args.nimg_per_gpu
-		config.VALIDATION_STEPS = max(1, args.nvalidation_steps // (config.IMAGES_PER_GPU*config.GPU_COUNT)) # 200 validation/test images
-		config.STEPS_PER_EPOCH = ((args.epoch_length - args.nvalidation_steps) // (config.IMAGES_PER_GPU*config.GPU_COUNT)) #16439 total images
-		#config.STEPS_PER_EPOCH= args.epoch_length
-
+		#config.VALIDATION_STEPS = max(1, args.nvalidation_steps // (config.IMAGES_PER_GPU*config.GPU_COUNT)) # 200 validation/test images
+		#config.STEPS_PER_EPOCH = ((args.epoch_length - args.nvalidation_steps) // (config.IMAGES_PER_GPU*config.GPU_COUNT)) #16439 total images
+		config.VALIDATION_STEPS= validation_steps_per_epoch
+		config.STEPS_PER_EPOCH= steps_per_epoch
+		
 	elif args.command == "test":
 		class InferenceConfig(SDetectorConfig):
 			# Set batch size to 1 since we'll be running inference on
