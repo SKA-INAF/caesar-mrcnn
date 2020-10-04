@@ -806,7 +806,7 @@ def parse_args():
 	parser.add_argument('--ngpu', required=False,default=1,type=int,metavar="Number of GPUs",help='Number of GPUs')
 	parser.add_argument('--nimg_per_gpu', required=False,default=1,type=int,metavar="Number of images per gpu",help='Number of images per gpu')
 	parser.add_argument('--nepochs', required=False,default=10,type=int,metavar="Number of training epochs",help='Number of training epochs')
-	parser.add_argument('--epoch_length', required=True,type=int,metavar="Number of data batches per epoch",help='Number of data batches per epoch, usually equal to train sample size.')
+	parser.add_argument('--epoch_length', required=False,type=int,default=1,metavar="Number of data batches per epoch",help='Number of data batches per epoch, usually equal to train sample size.')
 	parser.add_argument('--nvalidation_steps', required=False,default=1,type=int,metavar="Number of validation steps per epoch",help='Number of validation steps per epoch. Default is 0.')
 	parser.add_argument('--rpn_anchor_scales', dest='rpn_anchor_scales', required=False, type=str, default='2,4,8,16,32,64',help='RPN anchor scales') 
 	parser.add_argument('--max_gt_instances', dest='max_gt_instances', required=False, type=int, default=300,help='Max GT instances') 
