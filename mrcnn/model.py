@@ -79,7 +79,7 @@ def compute_backbone_shapes(config, image_shape):
         return config.COMPUTE_BACKBONE_SHAPE(image_shape)
 
     # Currently supports ResNet only
-    assert config.BACKBONE in ["resnet50", "resnet101"]
+    assert config.BACKBONE in ["resnet50", "resnet101", "custom"]
     return np.array(
         [[int(math.ceil(image_shape[0] / stride)),
             int(math.ceil(image_shape[1] / stride))]
@@ -213,7 +213,7 @@ def custom_backbone(input_image, train_bn=True):
     # Stage 1
     #x = KL.ZeroPadding2D((3, 3))(input_image) # padding to keep same image width and height after 7x7 filter
     #x = KL.Conv2D(16, (7,7), strides=(1,1), name='conv1', use_bias=True)(x)
-    x = KL.Conv2D(16, (7,7), strides=(1,1), name='conv1', use_bias=True)
+    x = KL.Conv2D(16, (7,7), strides=(1,1), name='conv1', use_bias=True)(input_image)
     x = BatchNorm(name='bn_conv1')(x, training=train_bn)
     x = KL.Activation('relu')(x)
     C1 = x
@@ -237,8 +237,8 @@ def custom_backbone(input_image, train_bn=True):
     C4 = x
 
     # Stage 5
-    x = KL.Conv2D(256, (3,3), strides=(1,1), name='conv3', use_bias=True)(x)
-    x = BatchNorm(name='bn_conv3')(x, training=train_bn)
+    x = KL.Conv2D(256, (3,3), strides=(1,1), name='conv5', use_bias=True)(x)
+    x = BatchNorm(name='bn_conv5')(x, training=train_bn)
     x = KL.Activation('relu')(x)
     C5 = x
 
@@ -1942,11 +1942,14 @@ class MaskRCNN():
             _, C2, C3, C4, C5 = config.BACKBONE(input_image, stage5=True,
                                                 train_bn=config.TRAIN_BN)
         else:
+            #_, C2, C3, C4, C5 = resnet_graph(input_image, config.BACKBONE,
+                                             stage5=True, train_bn=config.TRAIN_BN)
             if config.BACKBONE=='custom':
                 _, C2, C3, C4, C5 = custom_backbone(input_image, train_bn=config.TRAIN_BN)
             else:
                 _, C2, C3, C4, C5 = resnet_graph(input_image, config.BACKBONE,
                                              stage5=True, train_bn=config.TRAIN_BN)
+
         # Top-down Layers
         # TODO: add assert to varify feature map sizes match what's in config
         P5 = KL.Conv2D(config.TOP_DOWN_PYRAMID_SIZE, (1, 1), name='fpn_c5p5')(C5)

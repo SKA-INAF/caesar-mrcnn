@@ -579,8 +579,10 @@ class SourceDataset(utils.Dataset):
 		"""Load the specified image and return a [H,W,3] Numpy array."""
 		
 		# - Load image
+		#logger.info("self.convert_to_rgb=%d" % self.convert_to_rgb)
 		filename= self.image_info[image_id]['path']
 		image, header= utils.read_fits(filename,stretch=True,normalize=True,convertToRGB=self.convert_to_rgb)
+		#image, header= utils.read_fits(filename,stretch=True,normalize=True,convertToRGB=True)
 				
 		return image
 
