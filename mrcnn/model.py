@@ -1873,6 +1873,11 @@ class MaskRCNN():
         self.set_log_dir()
         self.keras_model = self.build(mode=mode, config=config)
 
+    def print_model(self):
+        """ Print Keras model architecture """
+        if self.keras_model:
+            print(self.keras_model.summary())
+
     def build(self, mode, config):
         """Build Mask R-CNN architecture.
             input_shape: The shape of the input image.

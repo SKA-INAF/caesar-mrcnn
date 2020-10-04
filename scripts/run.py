@@ -1007,7 +1007,7 @@ def main():
 			model = modellib.MaskRCNN(mode="inference", config=config,model_dir=args.logs)
 
 	logger.info("Printing the model ...")
-	print(model.summary())
+	model.print_model()
 
 	# - Load weights
 	if train_from_scratch:
