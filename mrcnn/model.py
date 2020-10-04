@@ -213,31 +213,31 @@ def custom_backbone(input_image, train_bn=True):
     # Stage 1
     #x = KL.ZeroPadding2D((3, 3))(input_image) # padding to keep same image width and height after 7x7 filter
     #x = KL.Conv2D(16, (7,7), strides=(1,1), name='conv1', use_bias=True)(x)
-    x = KL.Conv2D(16, (7,7), strides=(1,1), name='conv1', use_bias=True)(input_image)
+    x = KL.Conv2D(8, (7,7), strides=(1,1), name='conv1', use_bias=True)(input_image)
     x = BatchNorm(name='bn_conv1')(x, training=train_bn)
     x = KL.Activation('relu')(x)
     C1 = x
 
     # Stage 2
-    x = KL.Conv2D(32, (5,5), strides=(1,1), name='conv2', use_bias=True)(x)
+    x = KL.Conv2D(16, (5,5), strides=(1,1), name='conv2', use_bias=True)(x)
     x = BatchNorm(name='bn_conv2')(x, training=train_bn)
     x = KL.Activation('relu')(x)
     C2 = x
 
     # Stage 3
-    x = KL.Conv2D(64, (3,3), strides=(1,1), name='conv3', use_bias=True)(x)
+    x = KL.Conv2D(32, (3,3), strides=(1,1), name='conv3', use_bias=True)(x)
     x = BatchNorm(name='bn_conv3')(x, training=train_bn)
     x = KL.Activation('relu')(x)
     C3 = x
 
     # Stage 4
-    x = KL.Conv2D(128, (3,3), strides=(1,1), name='conv4', use_bias=True)(x)
+    x = KL.Conv2D(32, (3,3), strides=(1,1), name='conv4', use_bias=True)(x)
     x = BatchNorm(name='bn_conv4')(x, training=train_bn)
     x = KL.Activation('relu')(x)
     C4 = x
 
     # Stage 5
-    x = KL.Conv2D(256, (3,3), strides=(1,1), name='conv5', use_bias=True)(x)
+    x = KL.Conv2D(32, (3,3), strides=(1,1), name='conv5', use_bias=True)(x)
     x = BatchNorm(name='bn_conv5')(x, training=train_bn)
     x = KL.Activation('relu')(x)
     C5 = x
