@@ -189,6 +189,7 @@ class SourceDataset(utils.Dataset):
 	
 		self.class_id_map= {}
 		self.loaded_imgs= 0
+		self.convert_to_rgb= True
 		
 	# ================================================================
 	# ==   INIT
@@ -579,7 +580,7 @@ class SourceDataset(utils.Dataset):
 		
 		# - Load image
 		filename= self.image_info[image_id]['path']
-		image, header= utils.read_fits(filename,stretch=True,normalize=True,convertToRGB=True)
+		image, header= utils.read_fits(filename,stretch=True,normalize=True,convertToRGB=self.convert_to_rgb)
 				
 		return image
 
@@ -604,15 +605,21 @@ def train(args,model,config):
 	
 	# - Set options
 	nepochs= args.nepochs
-	nthreads= args.nthreads    
+	nthreads= args.nthreads 
+	if args.grayimg:
+		convert_to_rgb= False
+	else:
+		convert_to_rgb= True
 
 	# - Load training/validation dataset
 	logger.info("Loading train & validation dataset ...")
 	dataset_train = SourceDataset()
 	dataset_train.set_class_dict(args.classdict)
+	dataset_train.convert_to_rgb= convert_to_rgb
 
 	dataset_val = SourceDataset()
 	dataset_val.set_class_dict(args.classdict)
+	dataset_val.convert_to_rgb= convert_to_rgb
 
 	if args.dataloader=='datalist':
 		if dataset_train.load_data_from_list(args.datalist, args.maxnimgs)<0:
@@ -672,9 +679,15 @@ def train(args,model,config):
 def test(args,model,config):
 	""" Test the model on input dataset with ground truth knowledge """  
 
+	if args.grayimg:
+		convert_to_rgb= False
+	else:
+		convert_to_rgb= True
+
 	# - Create the dataset
 	dataset = SourceDataset()
 	dataset.set_class_dict(args.classdict)
+	dataset.convert_to_rgb= convert_to_rgb
 
 	if args.dataloader=='datalist':
 		if dataset.load_data_from_list(args.datalist, args.maxnimgs)<0:
@@ -712,7 +725,12 @@ def detect(args,model,config):
 	""" Test the model on input dataset with ground truth knowledge """  
 
 	# - Read image data
-	image_data, header= utils.read_fits(args.image,stretch=True,normalize=True,convertToRGB=True)
+	if args.grayimg:
+		convert_to_rgb= False
+	else:
+		convert_to_rgb= True		
+
+	image_data, header= utils.read_fits(args.image,stretch=True,normalize=True,convertToRGB=convert_to_rgb)
 	img_fullpath= os.path.abspath(args.image)
 	img_path_base= os.path.basename(img_fullpath)
 	img_path_base_noext= os.path.splitext(img_path_base)[0]
@@ -771,6 +789,8 @@ def parse_args():
 	parser.add_argument("command",metavar="<command>",help="'train' or 'test'")
 
 	# - COMMON OPTIONS
+	parser.add_argument('--grayimg', dest='grayimg', action='store_true')	
+	parser.set_defaults(grayimg=False)
 	parser.add_argument('--classdict', dest='classdict', required=False, type=str, default='{"sidelobe":1,"source":2,"galaxy":3}',help='Class id dictionary') 
 	parser.add_argument('--dataloader',required=False,metavar="Data loader type",type=str,default='filelist',help='Train/test data loader type {datalist,datalist_json,datadir_json}')
 	parser.add_argument('--datalist', required=False,metavar="/path/to/dataset",help='Train/test data filelist with format: filename_img,filename_mask,label or: filename_json')
@@ -788,7 +808,7 @@ def parse_args():
 	parser.add_argument('--nvalidation_steps', required=False,default=1,type=int,metavar="Number of validation steps per epoch",help='Number of validation steps per epoch. Default is 0.')
 	parser.add_argument('--rpn_anchor_scales', dest='rpn_anchor_scales', required=False, type=str, default='2,4,8,16,32,64',help='RPN anchor scales') 
 	parser.add_argument('--max_gt_instances', dest='max_gt_instances', required=False, type=int, default=300,help='Max GT instances') 
-	parser.add_argument('--backbone', dest='backbone', required=False, type=str, default='resnet101',help='Backbone network {resnet101,resnet50} (default=resnet101)') 
+	parser.add_argument('--backbone', dest='backbone', required=False, type=str, default='resnet101',help='Backbone network {resnet101,resnet50,custom} (default=resnet101)') 
 	parser.add_argument('--backbone_strides', dest='backbone_strides', required=False, type=str, default='2,4,8,16,32,64',help='Backbone strides') 
 	parser.add_argument('--rpn_nms_threshold', dest='rpn_nms_threshold', required=False, type=float, default=0.7,help='RPN Non-Maximum-Suppression threshold (default=0.7)') 
 	parser.add_argument('--rpn_train_anchors_per_image', dest='rpn_train_anchors_per_image', required=False, type=int, default=512,help='Number of anchors per image to use for RPN training (default=512)')
@@ -962,6 +982,7 @@ def main():
 	# - Override some other options		
 	config.RPN_ANCHOR_SCALES= rpn_ancor_scales
 	config.MAX_GT_INSTANCES= args.max_gt_instances
+	config.BACKBONE= backbone
 	config.BACKBONE_STRIDES= backbone_strides
 	config.RPN_NMS_THRESHOLD= args.rpn_nms_threshold
 	config.RPN_TRAIN_ANCHORS_PER_IMAGE= args.rpn_train_anchors_per_image
@@ -984,6 +1005,9 @@ def main():
 		DEVICE = "/cpu:0"  # /cpu:0 or /gpu:0
 		with tf.device(DEVICE):
 			model = modellib.MaskRCNN(mode="inference", config=config,model_dir=args.logs)
+
+	logger.info("Printing the model ...")
+	print(model.summary())
 
 	# - Load weights
 	if train_from_scratch:

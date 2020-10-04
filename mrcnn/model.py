@@ -207,6 +207,40 @@ def resnet_graph(input_image, architecture, stage5=False, train_bn=True):
     return [C1, C2, C3, C4, C5]
 
 
+def custom_backbone(input_image, train_bn=True):
+    """ Build a custom backbone net with 5 stages """
+	
+    # Stage 1
+    #x = KL.ZeroPadding2D((3, 3))(input_image) # padding to keep same image width and height after 7x7 filter
+    x = KL.Conv2D(16, (7,7), strides=(1,1), name='conv1', use_bias=True)(x)
+    x = BatchNorm(name='bn_conv1')(x, training=train_bn)
+    x = KL.Activation('relu')(x)
+		C1 = x
+
+    # Stage 2
+		x = KL.Conv2D(32, (5,5), strides=(1,1), name='conv2', use_bias=True)(x)
+    x = BatchNorm(name='bn_conv2')(x, training=train_bn)
+    x = KL.Activation('relu')(x)
+		C2 = x
+
+    # Stage 3
+		x = KL.Conv2D(64, (3,3), strides=(1,1), name='conv3', use_bias=True)(x)
+    x = BatchNorm(name='bn_conv3')(x, training=train_bn)
+    x = KL.Activation('relu')(x)
+		C3 = x
+
+    # Stage 4
+		x = KL.Conv2D(128, (3,3), strides=(1,1), name='conv4', use_bias=True)(x)
+    x = BatchNorm(name='bn_conv4')(x, training=train_bn)
+    x = KL.Activation('relu')(x)
+		C4 = x
+
+    # Stage 5
+		x = KL.Conv2D(256, (3,3), strides=(1,1), name='conv3', use_bias=True)(x)
+    x = BatchNorm(name='bn_conv3')(x, training=train_bn)
+    x = KL.Activation('relu')(x)
+		C5 = x
+
 ############################################################
 #  Proposal Layer
 ############################################################
@@ -1900,7 +1934,10 @@ class MaskRCNN():
             _, C2, C3, C4, C5 = config.BACKBONE(input_image, stage5=True,
                                                 train_bn=config.TRAIN_BN)
         else:
-            _, C2, C3, C4, C5 = resnet_graph(input_image, config.BACKBONE,
+            if config.BACKBONE=='custom':
+                _, C2, C3, C4, C5 = custom_backbone(input_image, train_bn=config.TRAIN_BN)
+            else:
+                _, C2, C3, C4, C5 = resnet_graph(input_image, config.BACKBONE,
                                              stage5=True, train_bn=config.TRAIN_BN)
         # Top-down Layers
         # TODO: add assert to varify feature map sizes match what's in config
