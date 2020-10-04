@@ -1943,7 +1943,7 @@ class MaskRCNN():
                                                 train_bn=config.TRAIN_BN)
         else:
             #_, C2, C3, C4, C5 = resnet_graph(input_image, config.BACKBONE,
-                                             stage5=True, train_bn=config.TRAIN_BN)
+            #                                 stage5=True, train_bn=config.TRAIN_BN)
             if config.BACKBONE=='custom':
                 _, C2, C3, C4, C5 = custom_backbone(input_image, train_bn=config.TRAIN_BN)
             else:
