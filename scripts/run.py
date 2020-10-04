@@ -982,7 +982,7 @@ def main():
 	# - Override some other options		
 	config.RPN_ANCHOR_SCALES= rpn_ancor_scales
 	config.MAX_GT_INSTANCES= args.max_gt_instances
-	config.BACKBONE= backbone
+	config.BACKBONE= args.backbone
 	config.BACKBONE_STRIDES= backbone_strides
 	config.RPN_NMS_THRESHOLD= args.rpn_nms_threshold
 	config.RPN_TRAIN_ANCHORS_PER_IMAGE= args.rpn_train_anchors_per_image
