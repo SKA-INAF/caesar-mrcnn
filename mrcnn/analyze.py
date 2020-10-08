@@ -76,12 +76,13 @@ class ModelTester(object):
 		logger.info("Processing up to %d images " % (self.n_max_img))
 
 		for index, image_id in enumerate(self.dataset.image_ids):
-			nimg+= 1
-		
+					
 			# - Check if stop inspection
 			if self.n_max_img>0 and nimg>=self.n_max_img:
 				logger.info("Max number of images to inspect reached, stop here.")
 				break
+
+			nimg+= 1
 
 			# - Inspect results	for current image
 			image_path = self.dataset.image_info[index]['path']
