@@ -610,7 +610,7 @@ class SourceDataset(utils.Dataset):
 	def image_uuid(self, image_id):
 		""" Return the uuid of the image."""
 
-		return self.image_info[image_id]['path']
+		return self.image_info[image_id]['image_id']
 		
 	
 ############################################################
