@@ -528,7 +528,7 @@ class SourceDataset(utils.Dataset):
 			width= data.shape[1]
 			if binary:
 				data= data.astype(np.bool)
-			if not mask:
+			if mask is None:
 				if binary:
 					mask = np.zeros([height,width,nobjs],dtype=np.bool)
 				else:
