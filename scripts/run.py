@@ -188,8 +188,10 @@ class SourceDataset(utils.Dataset):
 		utils.Dataset.__init__(self)
 	
 		self.class_id_map= {}
+		self.nclasses= 0
 		self.loaded_imgs= 0
 		self.convert_to_rgb= True
+		
 		
 	# ================================================================
 	# ==   INIT
@@ -212,8 +214,8 @@ class SourceDataset(utils.Dataset):
 			return -1
 		self.class_id_map= class_dict
 		
-		logger.debug("class_id_map=%s" % str(self.class_id_map))		
-
+		logger.debug("class_id_map=%s, nclasses=%d" % str(self.class_id_map))		
+	
 		# - Reset class info (defined in parent class) and add new entries defined in dictionary
 		#logger.info("Reset class info ...")
 		#self.class_info= [{"source": "", "id": 0, "name": "BG"}]
@@ -230,7 +232,11 @@ class SourceDataset(utils.Dataset):
 		# - Append bkg & unknown item (if not given in input)
 		self.class_id_map['bkg']= 0
 		#self.class_id_map['unknown']= -1
-	
+
+		# - Set number of classes
+		self.nclasses= len(self.class_id_map)
+		
+
 		return 0
 
 	# ================================================================
@@ -681,10 +687,19 @@ def train(args,model,config):
 def test(args,model,config):
 	""" Test the model on input dataset with ground truth knowledge """  
 
+	# - Set options
 	if args.grayimg:
 		convert_to_rgb= False
 	else:
 		convert_to_rgb= True
+
+	classid_remap_dict= {}
+	if args.remap_classids:
+		try:
+			classid_remap_dict= json.loads(args.classid_remap_dict)
+		except:
+			logger.error("Failed to convert class dict string to dict!")
+			return -1	
 
 	# - Create the dataset
 	dataset = SourceDataset()
@@ -714,7 +729,8 @@ def test(args,model,config):
 	tester.score_thr= args.scoreThr
 	tester.iou_thr= args.iouThr
 	tester.n_max_img= args.maxnimgs
-	#tester.n_max_img= args.nimg_test
+	
+
 
 	tester.test()
 
@@ -793,7 +809,12 @@ def parse_args():
 	# - COMMON OPTIONS
 	parser.add_argument('--grayimg', dest='grayimg', action='store_true')	
 	parser.set_defaults(grayimg=False)
-	parser.add_argument('--classdict', dest='classdict', required=False, type=str, default='{"sidelobe":1,"source":2,"galaxy":3}',help='Class id dictionary') 
+	parser.add_argument('--classdict', dest='classdict', required=False, type=str, default='{"sidelobe":1,"source":2,"galaxy":3}',help='Class id dictionary used when loading dataset') 
+	parser.add_argument('--classdict_model', dest='classdict_model', required=False, type=str, default='',help='Class id dictionary used for the model (if empty, it is set equal to classdict)')
+	parser.add_argument('--remap_classids', dest='remap_classids', action='store_true')	
+	parser.set_defaults(remap_classids=False)
+	parser.add_argument('--classid_remap_dict', dest='classid_remap_dict', required=False, type=str, default='',help='Dictionary used to remap detected classid to gt classid')
+ 
 	parser.add_argument('--dataloader',required=False,metavar="Data loader type",type=str,default='filelist',help='Train/test data loader type {datalist,datalist_json,datadir_json}')
 	parser.add_argument('--datalist', required=False,metavar="/path/to/dataset",help='Train/test data filelist with format: filename_img,filename_mask,label or: filename_json')
 	parser.add_argument('--datadir', required=False,metavar="/path/to/dataset",help='Train/test data top dir traversed to search json dataset files')
@@ -878,6 +899,12 @@ def validate_args(args):
 	# - Check weight file exists
 	# ...
 
+	# - Check remap id
+	if args.remap_classids:
+		if args.classid_remap_dict=="":
+			logger.error("Classid remap dictionary is empty (you need to provide one if you give the option --remap_classids)!")
+			return -1
+
 	return 0
 
 ############################################################
@@ -915,6 +942,9 @@ def main():
 	print("scoreThr: ",args.scoreThr)
 	print("classdict: ",args.classdict)
 
+	#===========================
+	#==   SET PARAMETERS
+	#===========================
 	weights_path = args.weights
 
 	rpn_ancor_scales= tuple([int(x.strip()) for x in args.rpn_anchor_scales.split(',')])
@@ -931,16 +961,34 @@ def main():
 		logger.error("Failed to convert class dict string to dict!")
 		return -1	
 
+	class_dict_model= class_dict
+	if args.classdict_model!="":
+		try:
+			class_dict_model= json.loads(args.classdict_model)
+		except:
+			logger.error("Failed to convert class dict model string to dict!")
+			return -1		
+
 	nclasses= len(class_dict)
+	nclasses_model= len(class_dict_model)
 	
 	class_names= ["bkg"]
 	for class_name in class_dict:
 		class_names.append(class_name)
-		
-	logger.info("Assuming #%d+1 classes in model from given class dictionary ..." % nclasses)
-	print("CLASS_NAMES")
+	
+	class_names_model= ["bkg"]
+	for class_name in class_dict_model:
+		class_names_model.append(class_name)
+	
+	logger.info("Assuming #%d+1 classes in dataset from given class dictionary ..." % nclasses)
+	print("CLASS_NAMES (DATASET)")
 	print(class_names)
+	
+	logger.info("Assuming #%d+1 classes in model from given class dictionary ..." % nclasses_model)
+	print("CLASS_NAMES (MODEL)")
+	print(class_names_model)
 
+	
 	steps_per_epoch= ((args.epoch_length - args.nvalidation_steps) // (args.nimg_per_gpu*args.ngpu))
 	validation_steps_per_epoch= max(1, args.nvalidation_steps // (args.nimg_per_gpu*args.ngpu))
 	
@@ -949,8 +997,8 @@ def main():
 	#===========================
 	if args.command == "train":
 		config = SDetectorConfig()
-		config.NUM_CLASSES = nclasses + 1
-		config.CLASS_NAMES = class_names
+		config.NUM_CLASSES = nclasses_model + 1
+		config.CLASS_NAMES = class_names_model
 		config.IMAGE_META_SIZE = 1 + 3 + 3 + 4 + 1 + config.NUM_CLASSES
 		config.GPU_COUNT = args.ngpu
 		config.IMAGES_PER_GPU = args.nimg_per_gpu
@@ -966,8 +1014,8 @@ def main():
 			GPU_COUNT = 1 # don't use GPU should be =0 but not working
 			IMAGES_PER_GPU = 1 # don't use GPU should be =0 but not working
 		config = InferenceConfig()
-		config.NUM_CLASSES = nclasses + 1
-		config.CLASS_NAMES = class_names
+		config.NUM_CLASSES = nclasses_model + 1
+		config.CLASS_NAMES = class_names_model
 		config.IMAGE_META_SIZE = 1 + 3 + 3 + 4 + 1 + config.NUM_CLASSES
 
 	elif args.command == "detect":
@@ -977,8 +1025,8 @@ def main():
 			GPU_COUNT = 1 # don't use GPU should be =0 but not working
 			IMAGES_PER_GPU = 1 # don't use GPU should be =0 but not working
 		config = InferenceConfig()
-		config.NUM_CLASSES = nclasses + 1
-		config.CLASS_NAMES = class_names
+		config.NUM_CLASSES = nclasses_model + 1
+		config.CLASS_NAMES = class_names_model
 		config.IMAGE_META_SIZE = 1 + 3 + 3 + 4 + 1 + config.NUM_CLASSES
 
 	# - Override some other options		
