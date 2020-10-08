@@ -347,6 +347,8 @@ class Dataset(object):
         }
         image_info.update(kwargs)
         self.image_info.append(image_info)
+        print("image_info")
+        print(self.image_info)
 
     def image_reference(self, image_id):
         """Return a link to the image in its source Website or details about
