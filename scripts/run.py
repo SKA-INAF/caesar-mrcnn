@@ -214,8 +214,7 @@ class SourceDataset(utils.Dataset):
 			return -1
 		self.class_id_map= class_dict
 		
-		logger.debug("class_id_map=%s, nclasses=%d" % str(self.class_id_map))		
-	
+		
 		# - Reset class info (defined in parent class) and add new entries defined in dictionary
 		#logger.info("Reset class info ...")
 		#self.class_info= [{"source": "", "id": 0, "name": "BG"}]
@@ -236,6 +235,8 @@ class SourceDataset(utils.Dataset):
 		# - Set number of classes
 		self.nclasses= len(self.class_id_map)
 		
+		logger.debug("class_id_map=%s, nclasses=%d" % (str(self.class_id_map),self.nclasses))		
+	
 
 		return 0
 
