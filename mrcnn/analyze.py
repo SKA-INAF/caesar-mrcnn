@@ -409,7 +409,8 @@ class Analyzer(object):
 		# - Draw results
 		if self.draw:
 			logger.info("Drawing results for image %s ..." % self.image_path_base)
-			outfile =  'out_' + self.image_path_base_noext + '.png'
+			##outfile =  'out_' + self.image_path_base_noext + '.png'
+			outfile =  'out_' + self.image_path_base_noext + '_id' + str(self.image_id) + '.png'
 			self.draw_results(outfile)
 
 		return 0
