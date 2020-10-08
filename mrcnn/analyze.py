@@ -48,13 +48,16 @@ class ModelTester(object):
 
 		# - Data options
 		self.n_max_img= -1
+		self.remap_classids= False
+		self.classid_map= {}
 
 		# - Process options
 		self.score_thr= 0.7
 		self.iou_thr= 0.6
 
 		# - Results
-		self.n_classes= self.config.NUM_CLASSES
+		#self.n_classes= self.config.NUM_CLASSES
+		self.n_classes= dataset.nclasses
 		self.classification_matrix= np.zeros((self.n_classes,self.n_classes))
 		self.classification_matrix_norm= np.zeros((self.n_classes,self.n_classes))
 		self.purity= np.zeros((1,self.n_classes))
@@ -88,6 +91,8 @@ class ModelTester(object):
 			analyzer= Analyzer(self.model,self.config,self.dataset)
 			analyzer.score_thr= self.score_thr
 			analyzer.iou_thr= self.iou_thr
+			analyzer.remap_classids= self.remap_classids
+			analyzer.classid_map= self.classid_map
 			
 			# - Inspecting results
 			logger.info("Inspecting results for image %s ..." % image_path_base)
@@ -181,7 +186,10 @@ class Analyzer(object):
 
 		# - Config options
 		self.config= config
-		self.n_classes= self.config.NUM_CLASSES
+		if dataset:
+			self.n_classes= dataset.nclasses
+		else:
+			self.n_classes= self.config.NUM_CLASSES
 
 		# - Data options
 		self.dataset= dataset
@@ -201,6 +209,7 @@ class Analyzer(object):
 		self.nobjects= 0
 
 		# - Processed ground truth masks
+		self.class_names_gt= None
 		self.masks_gt_merged= []
 		self.class_ids_gt_merged= []
 		self.bboxes_gt= []
@@ -212,6 +221,8 @@ class Analyzer(object):
 		self.scores_final= []	
 		self.bboxes= []
 		self.captions= []
+		self.remap_classids= False
+		self.classid_map= {}
 
 		# - Process options
 		self.score_thr= 0.7
@@ -230,13 +241,12 @@ class Analyzer(object):
 		self.write_to_json= True
 		self.class_color_map= {
 			'bkg': (0,0,0),# black
-			#'sidelobe': (1,1,0),# yellow
 			'sidelobe': (1,0,0),# red
 			'source': (0,0,1),# blue
 			'galaxy': (1,1,0),# yellow	
 			'galaxy_C1': (1,1,0),# yellow
-			'galaxy_C2': (1,0,1),# magenta
-			'galaxy_C3': (0,1,0),# green
+			'galaxy_C2': (1,1,0),# yellow
+			'galaxy_C3': (1,1,0),# yellow
 		}
 
 	def set_image_path(self,path):
@@ -260,10 +270,11 @@ class Analyzer(object):
 		self.image = self.dataset.load_image(self.image_id)
 		self.image_path_base= os.path.basename(self.image_path)
 		self.image_path_base_noext= os.path.splitext(self.image_path_base)[0]		
+		
 
 		# - Get detector result
-		r = self.model.detect([self.image], verbose=0)[0]
-		self.class_names= self.dataset.class_names
+		r = self.model.detect([self.image], verbose=0)[0]	
+		self.class_names= self.dataset.class_names	
 		self.masks= r['masks']
 		self.boxes= r['rois']
 		self.class_ids= r['class_ids']
@@ -271,13 +282,28 @@ class Analyzer(object):
 		self.nobjects= self.masks.shape[-1]
 		#N = boxes.shape[0]
 
-		# - Retrieve ground truth masks
-		#self.masks_gt= self.dataset.load_gt_mask_nonbinary(self.image_id)
-		#self.class_id_gt = self.dataset.image_info[self.image_id]["class_id"]		
-		#self.label_gt= self.class_names[self.class_id_gt]
-		#self.color_gt = self.class_color_map[self.label_gt]
-		#self.caption_gt = self.label_gt
+		# - Remap detected object ids?
+		if self.remap_classids and self.classid_map:	
+			logger.info("Remapping detection object ids & class names...")		
+			class_ids_remapped= []
+			class_names_remapped= []
+			for class_id in self.class_ids:
+				has_remap_classid= class_id in self.classid_map
+				class_name= self.class_names[class_id]
+				if has_remap_classid:
+					class_id_remap= self.classid_map[class_id]
+					class_name_remap= self.class_names[class_id_remap]
+					class_ids_remapped.append(class_id_remap)
+					class_names_remapped.append(class_name_remap)
+					logger.info("Remapped (id=%d,name=%s) to (id=%d,name=%s)" % (class_id,class_name,class_id_remap,class_name_remap))
+				else:
+					logger.error("Requested to remap class_id=%d but not found in map keys!" % class_id)
+					return -1
+			self.class_ids= class_ids_remapped
+			self.class_names= class_names_remapped
 
+		# - Retrieve ground truth masks
+		self.class_names_gt= self.dataset.class_names
 		self.masks_gt= self.dataset.load_gt_masks(self.image_id,binary=False)
 		self.class_ids_gt = self.dataset.image_info[self.image_id]["class_ids"]
 		logger.info("class_ids_gt elements: {}".format(' '.join(map(str, self.class_ids_gt))))
@@ -287,7 +313,7 @@ class Analyzer(object):
 		self.captions_gt= []
 
 		for item in self.class_ids_gt:
-			label= self.class_names[item]
+			label= self.class_names_gt[item]
 			color= self.class_color_map[label]
 			logger.info("label=%s" % label)	
 			self.labels_gt.append(label)
@@ -405,10 +431,9 @@ class Analyzer(object):
 			mask_gt= self.masks_gt[:,:,k]
 			label_gt= self.labels_gt[k]
 			class_id_gt= self.class_ids_gt[k]
-			#if self.label_gt=='galaxy_C2' or self.label_gt=='galaxy_C3' or self.label_gt=='galaxy':
+
 			if label_gt=='galaxy_C2' or label_gt=='galaxy_C3' or label_gt=='galaxy':
 				masks_gt_det.append(mask_gt)
-				#class_ids_gt_det.append(self.class_id_gt)
 				class_ids_gt_det.append(class_id_gt)
 				continue
 
@@ -425,7 +450,7 @@ class Analyzer(object):
 				# object_classid= mask_gt[mask_indices[0][0],mask_indices[1][0]] # Disabled for the moment
 				object_classid= class_id_gt
 				
-				logger.info("gt mask no. %d (subcomponent no. %d): object_classid=%d ..." % (k,i,object_classid))
+				logger.info("gt mask no. %d (subcomponent no. %d): classid_gt=%d ..." % (k,i,object_classid))
 
 				masks_gt_det.append(extracted_mask)
 				class_ids_gt_det.append(object_classid)
@@ -476,7 +501,7 @@ class Analyzer(object):
 			bbox= utils.extract_bboxes(mask_expanded)
 			self.bboxes_gt.append(bbox[0])
 	
-			label= self.class_names[self.class_ids_gt_merged[i]]
+			label= self.class_names_gt[self.class_ids_gt_merged[i]]
 			caption = label
 			self.captions_gt.append(caption)	
 		
@@ -538,7 +563,7 @@ class Analyzer(object):
 			score= scores_sel[index]
 
 			# - Skip if class id is galaxy
-			if label=='galaxy_C2' or label=='galaxy_C3':
+			if label=='galaxy_C2' or label=='galaxy_C3' or label=='galaxy':
 				masks_det.append(mask)
 				class_ids_det.append(class_id)
 				scores_det.append(score)
