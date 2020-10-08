@@ -197,6 +197,7 @@ class Analyzer(object):
 		self.image= None
 		self.image_header= None
 		self.image_id= -1
+		self.image_uuid= ''
 		self.image_path= ''
 		self.image_path_base= ''
 		self.image_path_base_noext= ''
@@ -271,7 +272,7 @@ class Analyzer(object):
 		self.image = self.dataset.load_image(self.image_id)
 		self.image_path_base= os.path.basename(self.image_path)
 		self.image_path_base_noext= os.path.splitext(self.image_path_base)[0]		
-		
+		self.image_uuid= self.dataset.image_uuid(self.image_id)
 
 		# - Get detector result
 		r = self.model.detect([self.image], verbose=0)[0]	
@@ -410,7 +411,7 @@ class Analyzer(object):
 		if self.draw:
 			logger.info("Drawing results for image %s ..." % self.image_path_base)
 			##outfile =  'out_' + self.image_path_base_noext + '.png'
-			outfile =  'out_' + self.image_path_base_noext + '_id' + str(self.image_id) + '.png'
+			outfile =  'out_' + self.image_path_base_noext + '_id' + self.image_uuid + '.png'
 			self.draw_results(outfile)
 
 		return 0
