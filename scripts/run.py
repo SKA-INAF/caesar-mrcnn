@@ -28,6 +28,7 @@ from imgaug import augmenters as iaa
 from skimage.measure import find_contours
 from imgaug import augmenters as iaa
 import uuid
+import ast
 
 # Root directory of the project
 ROOT_DIR = os.getcwd()
@@ -702,13 +703,19 @@ def test(args,model,config):
 	else:
 		convert_to_rgb= True
 
+	print("args.classid_remap_dict")
+	print(args.classid_remap_dict)
+
 	classid_remap_dict= {}
 	if args.remap_classids:
 		try:
-			classid_remap_dict= json.loads(args.classid_remap_dict)
+			classid_remap_dict= ast.literal_eval(args.classid_remap_dict)
 		except:
-			logger.error("Failed to convert class dict string to dict!")
+			logger.error("Failed to convert classid remap dict string to dict!")
 			return -1	
+
+	print("classid_remap_dict")
+	print(classid_remap_dict)
 
 	# - Create the dataset
 	dataset = SourceDataset()
@@ -738,8 +745,8 @@ def test(args,model,config):
 	tester.score_thr= args.scoreThr
 	tester.iou_thr= args.iouThr
 	tester.n_max_img= args.maxnimgs
-	
-
+	tester.remap_classids= args.remap_classids 
+	tester.classid_map= classid_remap_dict
 
 	tester.test()
 

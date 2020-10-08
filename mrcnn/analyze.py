@@ -64,6 +64,13 @@ class ModelTester(object):
 		self.nobjs_true= np.zeros((1,self.n_classes))
 		self.nobjs_det= np.zeros((1,self.n_classes))
 		self.nobjs_det_right= np.zeros((1,self.n_classes))
+		self.detobj_scores= []
+		self.detobj_ious= []
+		self.detobj_scoreMean= 0
+		self.detobj_scoreStdDev= 0
+		self.detobj_iouMean= 0
+		self.detobj_iouStdDev= 0
+
 	
 	# ========================
 	# ==     TEST
@@ -123,12 +130,17 @@ class ModelTester(object):
 		nobjs_true_sample= analyzer.nobjs_true
 		nobjs_det_sample= analyzer.nobjs_det
 		nobjs_det_right_sample= analyzer.nobjs_det_right
+		detobj_scores_sample= analyzer.detobj_scores
+		detobj_ious_sample= analyzer.detobj_ious
 
 		# - Sum perf data
 		self.classification_matrix+= C_sample
 		self.nobjs_true+= nobjs_true_sample
 		self.nobjs_det+= nobjs_det_sample
 		self.nobjs_det_right+= nobjs_det_right_sample
+		self.detobj_scores+= detobj_scores_sample
+		self.detobj_ious+= detobj_ious_sample
+
 
 	# =============================
 	# ==     COMPUTE PERFORMANCES
@@ -153,6 +165,13 @@ class ModelTester(object):
 			p= self.nobjs_det_right[0][j]/self.nobjs_det[0][j]
 			self.purity[0][j]= p
 
+		# - Compute score mean
+		self.detobj_scoreMean= np.mean(self.detobj_scores)
+		self.detobj_scoreStdDev= np.std(self.detobj_scores)
+		self.detobj_iouMean= np.mean(self.detobj_ious)
+		self.detobj_iouStdDev= np.std(self.detobj_ious)
+
+
 		# - Print results
 		print("== NOBJ TRUE ==")
 		print(self.nobjs_true)
@@ -171,6 +190,12 @@ class ModelTester(object):
 
 		print("== PRECISION (or PURITY) ==")
 		print(self.purity)
+
+		print("== DET SCORES ==")
+		print("scoreThr=%f, <score>=%f, sigma(score)=%f" % (self.score_thr,self.detobj_scoreMean,self.detobj_scoreStdDev))
+
+		print("== DET IOUs ==")
+		print("iouThr=%f, <iou>=%f, sigma(iou)=%f" % (self.iou_thr,self.detobj_iouMean,self.detobj_iouStdDev))
 
 # ========================
 # ==    ANALYZER
@@ -231,6 +256,8 @@ class Analyzer(object):
 		self.iou_thr= 0.6
 
 		# - Performances results
+		self.detobj_scores= []
+		self.detobj_ious= []
 		self.confusion_matrix= np.zeros((self.n_classes,self.n_classes))
 		self.confusion_matrix_norm= np.zeros((self.n_classes,self.n_classes))	
 		self.purity= np.zeros((1,self.n_classes))
@@ -284,25 +311,32 @@ class Analyzer(object):
 		self.nobjects= self.masks.shape[-1]
 		#N = boxes.shape[0]
 
-		# - Remap detected object ids?
+		# - Remap detected object ids & name?
 		if self.remap_classids and self.classid_map:	
 			logger.info("Remapping detection object ids & class names...")		
 			class_ids_remapped= []
-			class_names_remapped= []
+			
 			for class_id in self.class_ids:
 				has_remap_classid= class_id in self.classid_map
-				class_name= self.class_names[class_id]
+				
 				if has_remap_classid:
 					class_id_remap= self.classid_map[class_id]
-					class_name_remap= self.class_names[class_id_remap]
+					
 					class_ids_remapped.append(class_id_remap)
-					class_names_remapped.append(class_name_remap)
-					logger.info("Remapped (id=%d,name=%s) to (id=%d,name=%s)" % (class_id,class_name,class_id_remap,class_name_remap))
+					
+					logger.info("Remapped id=%d --> id=%d ..." % (class_id,class_id_remap))
 				else:
 					logger.error("Requested to remap class_id=%d but not found in map keys!" % class_id)
 					return -1
 			self.class_ids= class_ids_remapped
-			self.class_names= class_names_remapped
+
+			#class_names_remapped= []
+			#for class_id in range(self.class_names):
+			#	class_id_remap= self.classid_map[class_id]				
+			#	class_name= self.class_names[class_id]				
+			#	class_name_remap= self.class_names[class_id_remap] 
+			#	class_names_remapped.append(class_name_remap)
+			#self.class_names= class_names_remapped
 
 		# - Retrieve ground truth masks
 		self.class_names_gt= self.dataset.class_names
@@ -538,6 +572,9 @@ class Analyzer(object):
 			mask= self.masks[:, :, i]
 			class_id = self.class_ids[i]
 			score = self.scores[i]
+			logger.info("class_id=%d" % (class_id))
+			print("self.class_names")
+			print(self.class_names)
 			label = self.class_names[class_id]
 			caption = "{} {:.3f}".format(label, score)
 			if score<self.score_thr:
@@ -740,16 +777,19 @@ class Analyzer(object):
 			# - Find associations between true and detected objects according to largest IOU
 			index_best= -1
 			iou_best= 0
+			score_best= 0
 			logger.debug("len(self.bboxes)=%d, len(self.class_ids_final)=%d" % (len(self.bboxes),len(self.class_ids_final)))
 	
 			for j in range(len(self.bboxes)):
 				class_id= self.class_ids_final[j]
+				score= self.scores_final[j]
 				bbox= self.bboxes[j]
 				iou= utils.get_iou(bbox, bbox_gt)
 				logger.debug("IOU(det=%d,true=%d)=%f" % (j,i,iou))
 				if iou>self.iou_thr and iou>=iou_best:
 					index_best= j
 					iou_best= iou
+					score_best= score
 
 			# - Update confusion matrix
 			if index_best==-1:
@@ -757,6 +797,8 @@ class Analyzer(object):
 			else:
 				class_id_det= self.class_ids_final[index_best]
 				self.confusion_matrix[class_id_gt][class_id_det]+= 1
+				self.detobj_scores.append(score_best)
+				self.detobj_ious.append(iou_best)
 				logger.info("True object no. %d (class_id=%d) associated to detected object no. %d (class_id=%d) ..." % (i+1,class_id_gt,index_best,class_id_det))
 			
 
