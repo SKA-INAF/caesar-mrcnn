@@ -307,7 +307,8 @@ class Analyzer(object):
 		self.masks_gt= self.dataset.load_gt_masks(self.image_id,binary=False)
 		self.class_ids_gt = self.dataset.image_info[self.image_id]["class_ids"]
 		logger.info("class_ids_gt elements: {}".format(' '.join(map(str, self.class_ids_gt))))
-		logger.info("masks_gt shape=",self.masks_gt.shape)
+		print("masks_gt shape")
+		print(self.masks_gt.shape)
 
 		self.labels_gt= []
 		self.colors_gt= []
