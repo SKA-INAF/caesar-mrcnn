@@ -307,7 +307,8 @@ class Analyzer(object):
 		self.masks_gt= self.dataset.load_gt_masks(self.image_id,binary=False)
 		self.class_ids_gt = self.dataset.image_info[self.image_id]["class_ids"]
 		logger.info("class_ids_gt elements: {}".format(' '.join(map(str, self.class_ids_gt))))
-		
+		logger.info("masks_gt shape=",self.masks_gt.shape)
+
 		self.labels_gt= []
 		self.colors_gt= []
 		self.captions_gt= []
@@ -315,7 +316,7 @@ class Analyzer(object):
 		for item in self.class_ids_gt:
 			label= self.class_names_gt[item]
 			color= self.class_color_map[label]
-			logger.info("label=%s" % label)	
+			logger.info("label_gt=%s" % label)	
 			self.labels_gt.append(label)
 			self.colors_gt.append(color)
 			self.captions_gt.append(label)
@@ -426,6 +427,7 @@ class Analyzer(object):
 		# - Inspect ground truth masks
 		masks_gt_det= []
 		class_ids_gt_det= []
+		logger.info("Inspecting %d ground truth masks ..." % (self.masks_gt.shape[-1]))
 
 		for k in range(self.masks_gt.shape[-1]):
 			mask_gt= self.masks_gt[:,:,k]
