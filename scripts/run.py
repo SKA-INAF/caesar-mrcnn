@@ -604,6 +604,14 @@ class SourceDataset(utils.Dataset):
 		else:
 			super(self.__class__).image_reference(self, image_id)
 
+	# ================================================================
+	# ==   GET IMAGE UUID
+	# ================================================================
+	def image_uuid(self, image_id):
+		""" Return the uuid of the image."""
+
+		return self.image_info[image_id]['path']
+		
 	
 ############################################################
 #             TRAIN
