@@ -375,7 +375,7 @@ class SourceDataset(utils.Dataset):
 
 		# - Read json file
 		try:
-			json_file = open(filename)
+			json_file= open(filename,"r")
 		except IOError:
 			logger.error("Failed to open file %s, skip it..." % filename)
 			return -1
@@ -442,19 +442,25 @@ class SourceDataset(utils.Dataset):
 	# ================================================================
 	# ==   LOAD DATASET FROM ASCII (row format: jsonfile)
 	# ================================================================
-	def load_data_from_json_list(self, dataset, nmaximgs):
+	def load_data_from_json_list(self, filelist, nmaximgs):
 		""" Load dataset specified in a json filelist """
 	
 		# - Read json filelist
 		img_counter= 0
 		status= 0
 
-		with open(dataset,'r') as f:
+		with open(filelist,'r') as f:
 			for filename in f:
+				filename = filename.strip()
 				logger.info("Loading dataset info from file %s ..." % filename)
 
+				# - Check if absolute path
+				rootdir= ''
+				if os.path.isabs(filename):
+					rootdir= os.path.dirname(filename)
+
 				# - Load from json file
-				status= self.load_data_from_json_file(filename)
+				status= self.load_data_from_json_file(filename,rootdir)
 				if status<0:
 					continue
 
@@ -659,9 +665,6 @@ def create_train_val_sets_from_filelist(filelist, crossval_size=0.1, train_filen
 	""" Read input filelist with format img,mask,label and create train & val filelists """
 	
 	# - Read input list
-	#with open(filelist,'r') as f:
-	#	data = f.read().split('\n')
-
 	data= []
 	with open(filelist,'r') as f:
 		for line in f:
@@ -815,7 +818,7 @@ def create_test_dataset(args):
 	dataset.prepare()
 	logger.info("#%d entries in the test set ..." % (dataset.loaded_imgs))
 
-	return dataset_test
+	return dataset
 
 
 ############################################################
