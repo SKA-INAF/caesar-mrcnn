@@ -20,12 +20,14 @@ import json
 import time
 import argparse
 import datetime
+import random
 import numpy as np
 import skimage.draw
 import skimage.measure
 import tensorflow as tf
 from imgaug import augmenters as iaa
 from skimage.measure import find_contours
+from sklearn.model_selection import train_test_split
 from imgaug import augmenters as iaa
 import uuid
 import ast
@@ -172,6 +174,13 @@ class SDetectorConfig(Config):
 	# memory load. Recommended when using high-resolution images.
 	USE_MINI_MASK = False
 
+	#LOSS_WEIGHTS = {
+	#	"rpn_class_loss": 1.,
+	#	"rpn_bbox_loss": 0.1,
+	# "mrcnn_class_loss": 1.,
+	# "mrcnn_bbox_loss": 0.1,
+	# "mrcnn_mask_loss": 0.1
+ 	#}
 
 
 ############################################################
@@ -613,12 +622,253 @@ class SourceDataset(utils.Dataset):
 
 		return self.image_info[image_id]['id']
 		
+############################################################
+#        CREATE TRAIN/VAL SETS
+############################################################
+def create_train_val_sets_from_list(data, crossval_size=0.1, train_filename='train.dat', crossval_filename='crossval.dat'):
+	""" Read filelist with format img,mask,label and create train & val filelists """
 	
+	# - Check if list is empty
+	nentries= len(data)
+	if nentries<=0:
+		logger.error("Given filelist is empty!")
+		return []
+	if nentries<10:
+		logger.warn("Given filelist contains less than 10 entries ...")
+	
+	# - Shuffle and split train/val sets
+	random.shuffle(data)
+	x_train, x_crossval = train_test_split(data, test_size=float(crossval_size))
+	
+	# - Write both sets to files
+	logger.info("Writing #%d entries to training dataset list ..." % len(x_train))
+	with open(train_filename, 'w') as f:
+		for item in x_train:
+			f.write("%s\n" % item)
+
+	logger.info("Writing #%d entries to cross-validation dataset list ..." % len(x_crossval))
+	with open(crossval_filename, 'w') as f:
+		for item in x_crossval:
+			f.write("%s\n" % item)
+
+	# - Return filenames
+	return [train_filename, crossval_filename]
+
+
+def create_train_val_sets_from_filelist(filelist, crossval_size=0.1, train_filename='train.dat', crossval_filename='crossval.dat'):
+	""" Read input filelist with format img,mask,label and create train & val filelists """
+	
+	# - Read input list
+	#with open(filelist,'r') as f:
+	#	data = f.read().split('\n')
+
+	data= []
+	with open(filelist,'r') as f:
+		for line in f:
+			line = line.strip()
+			if not line:
+				continue
+			data.append(line)
+
+	# - Return train/cval filenames
+	return create_train_val_sets_from_list(data, crossval_size, train_filename, crossval_filename)
+
+
+def create_train_val_sets_from_json_search(rootdir, crossval_size=0.1, train_filename='train.dat', crossval_filename='crossval.dat'):
+	""" Traverse recursively from root dir and search for json files with format img,mask,label and create train & val filelists """
+	
+	# - Check topdir exists
+	if not os.path.isdir(rootdir):
+		logger.error("Directory %d does not exists on filesystem!" % topdir)
+		return []
+
+	# - Traverse dir and search for json files
+	img_counter= 0
+	stop= False
+	filelist= []
+
+	for root, dirs, files in os.walk(topdir):
+		path = root.split(os.sep)
+		for filename in sorted(files):
+			if not filename.endswith(".json"):
+				continue
+			filename_fullpath= os.path.join(root, filename)
+			filelist.append(filename_fullpath)
+
+	# - Return train/cval filenames
+	return create_train_val_sets_from_list(filelist, crossval_size, train_filename, crossval_filename)
+
+	
+
+def create_train_val_datasets(args, train_filename='train.dat', crossval_filename='crossval.dat'):
+	""" Create train & validation set """
+
+	# - Set options
+	if args.grayimg:
+		convert_to_rgb= False
+	else:
+		convert_to_rgb= True
+
+	crossval_size= args.validation_data_fract
+
+	# - Create train/val filelists if not passed as program arguments
+	has_train_val_datalist= (args.datalist_train and args.datalist_train!="" and args.datalist_val and args.datalist_val!="")
+	if has_train_val_datalist:
+		datalist_train= args.datalist_train
+		datalist_val= args.datalist_val
+	else:
+		# - Create train/val filelists from input datalist
+		if args.dataloader=='datalist' or args.dataloader=='datalist_json':
+			datalists= create_train_val_sets_from_filelist(args.datalist, crossval_size, train_filename, crossval_filename)
+
+		elif args.dataloader=='datadir':
+			datalists= create_train_val_sets_from_json_search(args.datadir, crossval_size, train_filename, crossval_filename)
+
+		else:
+			logger.error("Invalid/unknown dataloader (%s)!" % args.dataloader)
+			return []
+
+		if not datalists or len(datalists)!=2:
+			logger.error("Empty or invalid size list returned by create_train_val_sets_from_filelist method!")
+			return []
+		datalist_train= datalists[0]
+		datalist_val= datalists[1]
+
+
+	# - Load training/validation dataset
+	logger.info("Loading train & validation dataset ...")
+	dataset_train = SourceDataset()
+	dataset_train.set_class_dict(args.classdict)
+	dataset_train.convert_to_rgb= convert_to_rgb
+
+	dataset_val = SourceDataset()
+	dataset_val.set_class_dict(args.classdict)
+	dataset_val.convert_to_rgb= convert_to_rgb
+
+	if args.dataloader=='datalist':
+		if dataset_train.load_data_from_list(datalist_train, args.maxnimgs)<0:
+			logger.error("Failed to load train dataset from file %s (see logs)..." % datalist_train)
+			return []
+		if dataset_val.load_data_from_list(datalist_val, args.maxnimgs)<0:
+			logger.error("Failed to load validation dataset from file %s (see logs)..." % datalist_val)
+			return []
+
+	elif args.dataloader=='datalist_json' or args.dataloader=='datadir':
+		if dataset_train.load_data_from_json_list(datalist_train, args.maxnimgs)<0:
+			logger.error("Failed to load train dataset from file %s (see logs)..." % datalist_train)
+			return []
+		if dataset_val.load_data_from_json_list(datalist_val, args.maxnimgs)<0:
+			logger.error("Failed to load validation dataset from file %s (see logs)..." % datalist_val)
+			return []
+	
+	else:
+		logger.error("Invalid/unknown dataloader (%s) for training!" % args.dataloader)
+		return []
+
+	# - Prepare datasets
+	dataset_train.prepare()
+	dataset_val.prepare()
+	logger.info("#%d/%d entries in the training/validation sets ..." % (dataset_train.loaded_imgs, dataset_val.loaded_imgs))
+
+	return [dataset_train,dataset_val]
+
+
+def create_test_dataset(args):
+	""" Create test dataset """
+
+	# - Set options
+	if args.grayimg:
+		convert_to_rgb= False
+	else:
+		convert_to_rgb= True
+
+	classid_remap_dict= {}
+	if args.remap_classids:
+		try:
+			classid_remap_dict= ast.literal_eval(args.classid_remap_dict)
+		except:
+			logger.error("Failed to convert classid remap dict string to dict!")
+			return None	
+
+	# - Create the dataset
+	dataset = SourceDataset()
+	dataset.set_class_dict(args.classdict)
+	dataset.convert_to_rgb= convert_to_rgb
+
+	if args.dataloader=='datalist':
+		if dataset.load_data_from_list(args.datalist, args.maxnimgs)<0:
+			logger.error("Failed to load test dataset (see logs)...")
+			return None
+	elif args.dataloader=='datalist_json':
+		if dataset.load_data_from_json_list(args.datalist, args.maxnimgs)<0:
+			logger.error("Failed to load test dataset (see logs)...")
+			return None
+	elif args.dataloader=='datadir':
+		if dataset.load_data_from_json_search(args.datadir, args.maxnimgs)<0:
+			logger.error("Failed to load test dataset (see logs)...")
+			return None
+	else:
+		logger.error("Invalid/unknown dataloader (%s) for testing!" % args.dataloader)
+		return None
+
+	# - Prepare dataset
+	dataset.prepare()
+	logger.info("#%d entries in the test set ..." % (dataset.loaded_imgs))
+
+	return dataset_test
+
+
 ############################################################
 #             TRAIN
 ############################################################
+def train(args, model, config, datasets):
+	"""Train the model."""
+	
+	# - Check inputs
+	if len(datasets)!=2:
+		logger.error("Given dataset list must have size=2!")
+		return -1
+	dataset_train= datasets[0]
+	dataset_val= datasets[1]
 
-def train(args,model,config):    
+	if dataset_train is None:
+		logger.error("Input train dataset is None!")
+		return -1
+	if dataset_val is None:
+		logger.error("Input val dataset is None!")
+		return -1
+
+	if model is None:
+		logger.error("Input model is None!")
+		return -1
+	if config is None:
+		logger.error("Input configuration is None!")
+		return -1
+
+	# - Define image augmentation
+	#   http://imgaug.readthedocs.io/en/latest/source/augmenters.html
+	augmentation = iaa.SomeOf((0, 2), 
+		[
+			iaa.Fliplr(1.0),
+			iaa.Flipud(1.0),
+			iaa.OneOf([iaa.Affine(rotate=90),iaa.Affine(rotate=180),iaa.Affine(rotate=270)])
+		]
+	)
+
+	# - Start train
+	logger.info("Start training ...")
+	model.train(dataset_train, dataset_val,	
+		learning_rate=config.LEARNING_RATE,
+		epochs=args.nepochs,
+		augmentation=augmentation,
+		#layers='heads',
+		layers='all',
+		n_worker_threads=args.nthreads
+	)
+
+	return 0
+
+def train_old(args,model,config):
 	"""Train the model."""
 	
 	# - Set options
@@ -693,19 +943,21 @@ def train(args,model,config):
 ############################################################
 #        TEST
 ############################################################
-
-def test(args,model,config):
+def test(args, model, config, dataset):
 	""" Test the model on input dataset with ground truth knowledge """  
 
+	# - Check inputs
+	if dataset is None:
+		logger.error("Input dataset is None!")
+		return -1
+	if model is None:
+		logger.error("Input model is None!")
+		return -1
+	if config is None:
+		logger.error("Input configuration is None!")
+		return -1
+	
 	# - Set options
-	if args.grayimg:
-		convert_to_rgb= False
-	else:
-		convert_to_rgb= True
-
-	print("args.classid_remap_dict")
-	print(args.classid_remap_dict)
-
 	classid_remap_dict= {}
 	if args.remap_classids:
 		try:
@@ -714,8 +966,35 @@ def test(args,model,config):
 			logger.error("Failed to convert classid remap dict string to dict!")
 			return -1	
 
-	print("classid_remap_dict")
-	print(classid_remap_dict)
+	# - Test model on dataset
+	logger.info("Testing model on given dataset ...")
+	tester= ModelTester(model, config, dataset)	
+	tester.score_thr= args.scoreThr
+	tester.iou_thr= args.iouThr
+	tester.n_max_img= args.maxnimgs
+	tester.remap_classids= args.remap_classids 
+	tester.classid_map= classid_remap_dict
+
+	tester.test()
+
+	return 0
+
+def test_old(args,model,config):
+	""" Test the model on input dataset with ground truth knowledge """  
+
+	# - Set options
+	if args.grayimg:
+		convert_to_rgb= False
+	else:
+		convert_to_rgb= True
+
+	classid_remap_dict= {}
+	if args.remap_classids:
+		try:
+			classid_remap_dict= ast.literal_eval(args.classid_remap_dict)
+		except:
+			logger.error("Failed to convert classid remap dict string to dict!")
+			return -1	
 
 	# - Create the dataset
 	dataset = SourceDataset()
@@ -755,7 +1034,7 @@ def test(args,model,config):
 ############################################################
 #        DETECT
 ############################################################
-def detect(args,model,config):
+def detect(args, model, config):
 	""" Test the model on input dataset with ground truth knowledge """  
 
 	# - Read image data
@@ -831,9 +1110,12 @@ def parse_args():
 	parser.set_defaults(remap_classids=False)
 	parser.add_argument('--classid_remap_dict', dest='classid_remap_dict', required=False, type=str, default='',help='Dictionary used to remap detected classid to gt classid')
  
-	parser.add_argument('--dataloader',required=False,metavar="Data loader type",type=str,default='filelist',help='Train/test data loader type {datalist,datalist_json,datadir_json}')
+	parser.add_argument('--dataloader',required=False,metavar="Data loader type",type=str,default='filelist',help='Train/cross-val data loader type {datalist,datalist_json,datadir_json}')
 	parser.add_argument('--datalist', required=False,metavar="/path/to/dataset",help='Train/test data filelist with format: filename_img,filename_mask,label or: filename_json')
+	parser.add_argument('--datalist_train', required=False,metavar="/path/to/train_dataset", default=None, help='Train data filelist with format: filename_img,filename_mask,label or: filename_json')
+	parser.add_argument('--datalist_val', required=False,metavar="/path/to/val_dataset", default=None, help='Cross-val data filelist with format: filename_img,filename_mask,label or: filename_json')
 	parser.add_argument('--datadir', required=False,metavar="/path/to/dataset",help='Train/test data top dir traversed to search json dataset files')
+	parser.add_argument('--validation_data_fract', dest='validation_data_fract', required=False, default=0.1, help='Fraction of input data used for cross-validation (default=0.1)')
 	parser.add_argument('--maxnimgs', required=False,metavar="",type=int,default=-1,help="Max number of images to consider in dataset (-1=all) (default=-1)")
 	parser.add_argument('--weights', required=False,metavar="/path/to/weights.h5",help="Path to weights .h5 file")
 	parser.add_argument('--logs', required=False,default=DEFAULT_LOGS_DIR,metavar="/path/to/logs/",help='Logs and checkpoints directory (default=logs/)')
@@ -841,10 +1123,10 @@ def parse_args():
 
 	# - TRAIN OPTIONS
 	parser.add_argument('--ngpu', required=False,default=1,type=int,metavar="Number of GPUs",help='Number of GPUs')
-	parser.add_argument('--nimg_per_gpu', required=False,default=1,type=int,metavar="Number of images per gpu",help='Number of images per gpu')
-	parser.add_argument('--nepochs', required=False,default=10,type=int,metavar="Number of training epochs",help='Number of training epochs')
-	parser.add_argument('--epoch_length', required=False,type=int,default=1,metavar="Number of data batches per epoch",help='Number of data batches per epoch, usually equal to train sample size.')
-	parser.add_argument('--nvalidation_steps', required=False,default=1,type=int,metavar="Number of validation steps per epoch",help='Number of validation steps per epoch. Default is 0.')
+	parser.add_argument('--nimg_per_gpu', required=False,default=1,type=int,metavar="Number of images per gpu",help='Number of images per gpu (default=1)')
+	parser.add_argument('--nepochs', required=False,default=1,type=int,metavar="Number of training epochs",help='Number of training epochs (default=1)')
+	parser.add_argument('--epoch_length', required=False,type=int,default=None,metavar="Number of data batches per epoch",help='Number of data batches per epoch. If None, assumed equal to the train sample size.')
+	parser.add_argument('--nvalidation_steps', required=False,default=None,type=int,metavar="Number of validation steps per epoch",help='Number of validation steps per epoch. If None, assumed equal to the cross-validation sample size.')
 	parser.add_argument('--rpn_anchor_scales', dest='rpn_anchor_scales', required=False, type=str, default='4,8,16,32,64',help='RPN anchor scales') 
 	parser.add_argument('--max_gt_instances', dest='max_gt_instances', required=False, type=int, default=300,help='Max GT instances') 
 	parser.add_argument('--backbone', dest='backbone', required=False, type=str, default='resnet101',help='Backbone network {resnet101,resnet50,custom} (default=resnet101)') 
@@ -853,6 +1135,12 @@ def parse_args():
 	parser.add_argument('--rpn_train_anchors_per_image', dest='rpn_train_anchors_per_image', required=False, type=int, default=512,help='Number of anchors per image to use for RPN training (default=512)')
 	parser.add_argument('--train_rois_per_image', dest='train_rois_per_image', required=False, type=int, default=512,help='Number of ROIs per image to feed to classifier/mask heads (default=512)')
 	parser.add_argument('--rpn_anchor_ratios', dest='rpn_anchor_ratios', required=False, type=str, default='0.5,1,2',help='RPN anchor ratios') 
+	
+	parser.add_argument('--rpn_class_loss_weight', dest='rpn_class_loss_weight', required=False, type=float, default='1',help='RPN classification loss weight') 
+	parser.add_argument('--rpn_bbox_loss_weight', dest='rpn_bbox_loss_weight', required=False, type=float, default='1',help='RPN bounding box loss weight') 
+	parser.add_argument('--mrcnn_class_loss_weight', dest='mrcnn_class_loss_weight', required=False, type=float, default='1',help='Classification loss weight') 
+	parser.add_argument('--mrcnn_bbox_loss_weight', dest='mrcnn_bbox_loss_weight', required=False, type=float, default='1',help='Bounding box loss weight') 
+	parser.add_argument('--mrcnn_mask_loss_weight', dest='mrcnn_mask_loss_weight', required=False, type=float, default='1',help='Mask loss weight') 
 	
 
 	# - TEST OPTIONS
@@ -879,9 +1167,11 @@ def validate_args(args):
 	# - Check data loaders
 	if args.dataloader=='datalist' or args.dataloader=='datalist_json':
 		has_datalist= (args.datalist and args.datalist!="")
+		has_train_val_datalist= (args.datalist_train and args.datalist_train!="" and args.datalist_val and args.datalist_val!="")
 		if not has_datalist:
-			logger.error("Argument --datalist is required for training with datalist data loader!")
-			return -1
+			if not has_train_val_datalist:
+				logger.error("Argument --datalist (or alternatively --datalist_train, --datalist_val) is required for training with datalist data loader!")
+				return -1
 	elif args.dataloader=='datadir_json':
 		has_datadir= (args.datadir and args.datadir!="")
 		dir_exist= os.path.isdir(args.datadir)
@@ -1004,10 +1294,52 @@ def main():
 	print("CLASS_NAMES (MODEL)")
 	print(class_names_model)
 
-	
-	steps_per_epoch= ((args.epoch_length - args.nvalidation_steps) // (args.nimg_per_gpu*args.ngpu))
-	validation_steps_per_epoch= max(1, args.nvalidation_steps // (args.nimg_per_gpu*args.ngpu))
-	
+	loss_weight_dict= {};
+	loss_weight_dict['rpn_class_loss']= args.rpn_class_loss_weight
+	loss_weight_dict['rpn_bbox_loss']= args.rpn_bbox_loss_weight
+	loss_weight_dict['mrcnn_class_loss']= args.mrcnn_class_loss_weight
+	loss_weight_dict['mrcnn_bbox_loss']= args.mrcnn_bbox_loss_weight
+	loss_weight_dict['mrcnn_mask_loss']= args.mrcnn_mask_loss_weight
+
+
+	#===========================
+	#==   LOAD DATASETS
+	#===========================
+	if args.command == "train":
+		logger.info("Creating/setting & loading train/val datasets ...")
+		datasets= create_train_val_datasets(args)
+		if len(datasets)!=2:
+			logger.error("Failed to create train/val datasets!")
+			return 1
+
+	elif args.command == "test":
+		logger.info("Creating/setting & loading test dataset ...")
+		dataset= create_test_dataset(args)
+		if dataset is None:
+			logger.error("Failed to create test dataset!")
+			return 1
+
+	# - Updating steps per epoch
+	if args.command == "train":
+		nentries_train= datasets[0].loaded_imgs
+		nentries_val= datasets[1].loaded_imgs
+		epoch_step_info_given= ( (args.epoch_length is not None) and (args.epoch_length>0) )
+		val_step_info_given= ( (args.nvalidation_steps is not None) and (args.nvalidation_steps>0) )
+
+		if epoch_step_info_given and val_step_info_given:
+			steps_per_epoch= ((args.epoch_length - args.nvalidation_steps) // (args.nimg_per_gpu*args.ngpu))
+			validation_steps_per_epoch= max(1, args.nvalidation_steps // (args.nimg_per_gpu*args.ngpu))
+
+		else:
+			steps_per_epoch= (nentries_train // (args.nimg_per_gpu*args.ngpu))
+			validation_steps_per_epoch= max(1, nentries_val // (args.nimg_per_gpu*args.ngpu))
+
+	elif args.command == "test":
+		steps_per_epoch= 1
+		validation_steps_per_epoch= 1
+
+	logger.info("Train/validation steps per epoch= %d/%d" % (steps_per_epoch,validation_steps_per_epoch))
+
 	#===========================
 	#==   CONFIG
 	#===========================
@@ -1054,6 +1386,7 @@ def main():
 	config.RPN_TRAIN_ANCHORS_PER_IMAGE= args.rpn_train_anchors_per_image
 	config.TRAIN_ROIS_PER_IMAGE= args.train_rois_per_image
 	config.RPN_ANCHOR_RATIOS= rpn_anchor_ratios
+	config.LOSS_WEIGHTS= loss_weight_dict
 
 	config.display()
 
@@ -1062,7 +1395,7 @@ def main():
 	#===========================
 	# - Create model
 	if args.command == "train":
-		model = modellib.MaskRCNN(mode="training", config=config,model_dir=args.logs)
+		model = modellib.MaskRCNN(mode="training", config=config, model_dir=args.logs)
 	elif args.command == "test" or args.command == "detect":
 		# Device to load the neural network on.
 		# Useful if you're training a model on the same 
@@ -1070,7 +1403,7 @@ def main():
 		# GPU for training.
 		DEVICE = "/cpu:0"  # /cpu:0 or /gpu:0
 		with tf.device(DEVICE):
-			model = modellib.MaskRCNN(mode="inference", config=config,model_dir=args.logs)
+			model = modellib.MaskRCNN(mode="inference", config=config, model_dir=args.logs)
 
 	logger.info("Printing the model ...")
 	model.print_model()
@@ -1087,15 +1420,15 @@ def main():
 	#===========================
 	# - Train or evaluate
 	if args.command == "train":
-		if train(args,model,config)<0:
+		if train(args, model, config, datasets)<0:
 			logger.error("Failed to run train!")
 			return 1
 	elif args.command == "test":
-		if test(args,model,config)<0:
+		if test(args, model, config, dataset)<0:
 			logger.error("Failed to run test!")
 			return 1
 	elif args.command == "detect":
-		if detect(args,model,config)<0:
+		if detect(args, model, config)<0:
 			logger.error("Failed to run detect!")
 			return 1		
 	
