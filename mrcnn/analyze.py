@@ -587,7 +587,8 @@ class Analyzer(object):
 			scores_sel.append(score)
 			nobjects_sel+= 1
 		
-		logger.info("%d objects selected in this image ..." % nobjects_sel)
+		#logger.info("%d objects selected in this image ..." % nobjects_sel)
+		logger.info("%d objects selected in this image ..." % len(masks_sel))
 
 		# - Sort objects by descending scores
 		sort_indices= np.argsort(scores_sel)[::-1]
@@ -615,7 +616,7 @@ class Analyzer(object):
 
 			# - Extract components masks
 			component_labels, ncomponents= self.extract_mask_connected_components(mask)
-			logger.debug("Found %d sub components in mask no. %d ..." % (ncomponents,index))
+			logger.info("Found %d sub components in mask no. %d ..." % (ncomponents,index))
 		
 			# - Extract indices of components and create masks for extracted components
 			#indices = np.indices(mask.shape).T[:,:,[1, 0]]
@@ -732,26 +733,43 @@ class Analyzer(object):
 					class_id_best= class_id
 			
 			logger.debug("Mask with index %s (score=%f, class=%d) selected as the best among all the overlapping masks..." % (index_best,score_best,class_id_best))
+
+			# - Compute bounding box, check integrity
+			height= masks_merged[index_best].shape[0]
+			width= masks_merged[index_best].shape[1]
+			mask_expanded = np.zeros([height,width,1],dtype=np.bool)
+			mask_expanded[:,:,0]= masks_merged[index_best]
+			bbox= utils.extract_bboxes(mask_expanded)
+
+			if bbox[0][1]>=bbox[0][3] or bbox[0][0]>=bbox[0][2]:
+				logger.warn("Invalid det bbox(%d,%d,%d,%d), skip it ..." % (bbox[0][1],bbox[0][3],bbox[0][0],bbox[0][2]) )
+				continue
+
+			# - Add to collection
+			label= self.class_names[class_ids_merged[index_best]]
+			caption = "{} {:.2f}".format(label, scores_merged[index_best])
+
 			self.masks_final.append(masks_merged[index_best])
 			self.class_ids_final.append(class_ids_merged[index_best])
 			self.scores_final.append(scores_merged[index_best])
+			self.bboxes.append(bbox[0])
+			self.captions.append(caption)
 		
-		logger.info("#%d masks finally selected..." % len(self.masks_final))
+		logger.info("#%d det masks finally selected..." % len(self.masks_final))
 
 		# - Compute bounding boxes & image captions from selected masks
-		for i in range(len(self.masks_final)):
-			mask= self.masks_final[i]
-			height= mask.shape[0]
-			width= mask.shape[1]
-			mask_expanded = np.zeros([height,width,1],dtype=np.bool)
-			mask_expanded[:,:,0]= mask
-			bbox= utils.extract_bboxes(mask_expanded)
-			self.bboxes.append(bbox[0])
-	
-			label= self.class_names[self.class_ids_final[i]]
-			score= self.scores_final[i]
-			caption = "{} {:.2f}".format(label, score)
-			self.captions.append(caption)
+		#for i in range(len(self.masks_final)):
+		#	mask= self.masks_final[i]
+		#	height= mask.shape[0]
+		#	width= mask.shape[1]
+		#	mask_expanded = np.zeros([height,width,1],dtype=np.bool)
+		#	mask_expanded[:,:,0]= mask
+		#	bbox= utils.extract_bboxes(mask_expanded)
+		#	self.bboxes.append(bbox[0])
+		# label= self.class_names[self.class_ids_final[i]]
+		#	score= self.scores_final[i]
+		#	caption = "{} {:.2f}".format(label, score)
+		#	self.captions.append(caption)
 
 
 	# ============================
@@ -784,6 +802,12 @@ class Analyzer(object):
 				class_id= self.class_ids_final[j]
 				score= self.scores_final[j]
 				bbox= self.bboxes[j]
+				
+				# - Check bbox 
+				if bbox[1]>=bbox[3] or bbox[0]>=bbox[2]:
+					logger.warn("Invalid det bbox when computing IOU among boxes bbox(%d,%d,%d,%d) and bbox_gt(%d,%d,%d,%d), skip it..." % (bbox[1],bbox[3],bbox[0],bbox[2],bbox_gt[1],bbox_gt[3],bbox_gt[0],bbox_gt[2]) )
+					continue
+
 				iou= utils.get_iou(bbox, bbox_gt)
 				logger.debug("IOU(det=%d,true=%d)=%f" % (j,i,iou))
 				if iou>self.iou_thr and iou>=iou_best:
@@ -824,6 +848,12 @@ class Analyzer(object):
 			for i in range(len(self.bboxes_gt)):
 				bbox_gt= self.bboxes_gt[i]
 				class_id_gt= self.class_ids_gt_merged[i]	
+
+				# - Check bbox 
+				if bbox[1]>=bbox[3] or bbox[0]>=bbox[2]:
+					logger.warn("Invalid det bbox when computing IOU among boxes bbox(%d,%d,%d,%d) and bbox_gt(%d,%d,%d,%d), skip it..." % (bbox[1],bbox[3],bbox[0],bbox[2],bbox_gt[1],bbox_gt[3],bbox_gt[0],bbox_gt[2]) )
+					continue
+
 				iou= utils.get_iou(bbox, bbox_gt)
 				if iou>self.iou_thr and iou>=iou_best:
 					index_best= i
