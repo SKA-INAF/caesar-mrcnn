@@ -1,3 +1,4 @@
+
 """
 Mask R-CNN
 Train on the radio galaxy/source/sidelobe dataset.
@@ -1337,12 +1338,13 @@ def main():
 			steps_per_epoch= (nentries_train // (args.nimg_per_gpu*args.ngpu))
 			validation_steps_per_epoch= max(1, nentries_val // (args.nimg_per_gpu*args.ngpu))
 
+		logger.info("Train/validation steps per epoch= %d/%d" % (steps_per_epoch,validation_steps_per_epoch))
+
 	elif args.command == "test":
 		steps_per_epoch= 1
 		validation_steps_per_epoch= 1
 
-	logger.info("Train/validation steps per epoch= %d/%d" % (steps_per_epoch,validation_steps_per_epoch))
-
+	
 	#===========================
 	#==   CONFIG
 	#===========================

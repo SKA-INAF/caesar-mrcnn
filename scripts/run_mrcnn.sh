@@ -1,4 +1,12 @@
-#!/bin/bash
+#!/bin/bash -e
+
+
+## SET PYTHON ENV
+#unset PYTHONPATH
+#export PYTHONPATH=$PYTHONPATH:$MASKRCNN_DIR/lib/python3.6/site-packages/
+#export PATH=$PATH:$MASKRCNN_DIR/bin:$PRMON_DIR/bin
+
+echo "PYTHONPATH=$PYTHONPATH"
 
 #######################################
 ##         CHECK ARGS
@@ -277,9 +285,6 @@ done
 ###########################
 ##    RUN
 ###########################
-# - Set exec
-EXE="python3 $MASKRCNN_DIR/bin/run.py "
-
 # - Set exec options
 EXE_ARGS=""
 EXE_ARGS="$EXE_ARGS $GRAYIMG_OPTION "
@@ -324,11 +329,16 @@ EXE_ARGS="$EXE_ARGS $NIMG_PER_GPU_OPTION "
 EXE_ARGS="$EXE_ARGS $RUNMODE "
 
 
-# - Set command to be run
-CMD="$EXE $EXE_ARGS"
+# - Run command
+echo "INFO: Running mask-rcnn with args: $EXE_ARGS"
+#exec $CMD &
+python3.6 $MASKRCNN_DIR/bin/run.py $EXE_ARGS
 
-
-echo "INFO: Running cmd: $CMD"
-##exec $CMD &
+STATUS=$?
+if [ $STATUS -ne 0 ];
+then
+	echo "ERROR: mask-rcnn run failed with status $STATUS!"
+	exit $STATUS
+fi
 
 
