@@ -1,4 +1,4 @@
-#!/bin/bash -e
+#!/bin/bash
 
 
 ## SET PYTHON ENV
