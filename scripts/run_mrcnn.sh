@@ -332,7 +332,7 @@ EXE_ARGS="$EXE_ARGS $RUNMODE "
 # - Run command
 echo "INFO: Running mask-rcnn with args: $EXE_ARGS"
 #exec $CMD &
-python3.6 $MASKRCNN_DIR/bin/run.py $EXE_ARGS
+python3 $MASKRCNN_DIR/bin/run.py $EXE_ARGS
 
 STATUS=$?
 if [ $STATUS -ne 0 ];
