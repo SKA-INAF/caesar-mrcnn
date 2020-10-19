@@ -4,7 +4,7 @@ Setup for mrcnn
 """
 import os
 import sys
-from setuptools import setup
+from setuptools import setup, find_packages
 
 
 def read(fname):
@@ -66,7 +66,10 @@ setup(
 	license = "GPL3",
 	url="https://github.com/SKA-INAF/mrcnn",
 	long_description=read('README.md'),
-	packages=['mrcnn'],
+	#packages=['mrcnn'],
+	packages=find_packages(),
+	data_files=[("data",["data/galaxy0002.fits", "data/sidelobe0001.fits"])],
+	include_package_data=True,
 	install_requires=reqs,
 	scripts=['scripts/run.py','scripts/train_all.py','scripts/train_all_gpu.py','scripts/sclassifier.py','scripts/run_mrcnn.sh'],
 )
