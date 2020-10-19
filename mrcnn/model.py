@@ -376,7 +376,17 @@ class ProposalLayer(KE.Layer):
 
 def log2_graph(x):
     """Implementation of Log2. TF doesn't have a native implementation."""
-    return tf.log(x) / tf.log(2.0)
+    res= 0
+    try:
+        res= tf.log(x) / tf.log(2.0)   # tensorflow<2
+    except:
+        try:
+            res= tf.math.log(x) / tf.math.log(2.0) # tensorflow=2
+        except:
+            raise
+    return res
+
+#    return tf.log(x) / tf.log(2.0)
 
 
 class PyramidROIAlign(KE.Layer):
@@ -2407,7 +2417,7 @@ class MaskRCNN():
         # Work-around for Windows: Keras fails on Windows when using
         # multiprocessing workers. See discussion here:
         # https://github.com/matterport/Mask_RCNN/issues/13#issuecomment-353124009
-        if os.name is 'nt':
+        if os.name == 'nt':
             workers = 0
         else:
             ncpus= multiprocessing.cpu_count()
