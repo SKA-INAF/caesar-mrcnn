@@ -207,42 +207,75 @@ def resnet_graph(input_image, architecture, stage5=False, train_bn=True):
     return [C1, C2, C3, C4, C5]
 
 
-def custom_backbone(input_image, train_bn=True):
+def custom_backbone(input_image, architecture, stage5=True, train_bn=True):
     """ Build a custom backbone net with 5 stages """
-	
+    assert architecture in ["custom"]
     # Stage 1
-    #x = KL.ZeroPadding2D((3, 3))(input_image) # padding to keep same image width and height after 7x7 filter
-    #x = KL.Conv2D(16, (7,7), strides=(1,1), name='conv1', use_bias=True)(x)
-    x = KL.Conv2D(8, (7,7), strides=(1,1), name='conv1', use_bias=True)(input_image)
+    x = KL.ZeroPadding2D((3, 3))(input_image)
+    x = KL.Conv2D(16, (7, 7), strides=(2, 2), name='conv1', use_bias=True)(x)
     x = BatchNorm(name='bn_conv1')(x, training=train_bn)
     x = KL.Activation('relu')(x)
-    C1 = x
-
+    C1 = x = KL.MaxPooling2D((3, 3), strides=(2, 2), padding="same")(x)
     # Stage 2
-    x = KL.Conv2D(16, (5,5), strides=(1,1), name='conv2', use_bias=True)(x)
-    x = BatchNorm(name='bn_conv2')(x, training=train_bn)
-    x = KL.Activation('relu')(x)
-    C2 = x
-
+    x = conv_block(x, 3, [16, 16, 64], stage=2, block='a', strides=(1, 1), train_bn=train_bn)
+    x = identity_block(x, 3, [16, 16, 64], stage=2, block='b', train_bn=train_bn)
+    C2 = x = identity_block(x, 3, [16, 16, 64], stage=2, block='c', train_bn=train_bn)
     # Stage 3
-    x = KL.Conv2D(32, (3,3), strides=(1,1), name='conv3', use_bias=True)(x)
-    x = BatchNorm(name='bn_conv3')(x, training=train_bn)
-    x = KL.Activation('relu')(x)
-    C3 = x
-
+    x = conv_block(x, 3, [32, 32, 128], stage=3, block='a', train_bn=train_bn)
+    x = identity_block(x, 3, [32, 32, 128], stage=3, block='b', train_bn=train_bn)
+    x = identity_block(x, 3, [32, 32, 128], stage=3, block='c', train_bn=train_bn)
+    C3 = x = identity_block(x, 3, [32, 32, 128], stage=3, block='d', train_bn=train_bn)
     # Stage 4
-    x = KL.Conv2D(32, (3,3), strides=(1,1), name='conv4', use_bias=True)(x)
-    x = BatchNorm(name='bn_conv4')(x, training=train_bn)
-    x = KL.Activation('relu')(x)
+    x = conv_block(x, 3, [64, 64, 256], stage=4, block='a', train_bn=train_bn)
+    block_count = 1
+    for i in range(block_count):
+        x = identity_block(x, 3, [64, 64, 256], stage=4, block=chr(98 + i), train_bn=train_bn)
     C4 = x
-
     # Stage 5
-    x = KL.Conv2D(32, (3,3), strides=(1,1), name='conv5', use_bias=True)(x)
-    x = BatchNorm(name='bn_conv5')(x, training=train_bn)
-    x = KL.Activation('relu')(x)
-    C5 = x
-
+    if stage5:
+        x = conv_block(x, 3, [128, 128, 512], stage=5, block='a', train_bn=train_bn)
+        x = identity_block(x, 3, [128, 128, 512], stage=5, block='b', train_bn=train_bn)
+        C5 = x = identity_block(x, 3, [128, 128, 512], stage=5, block='c', train_bn=train_bn)
+    else:
+        C5 = None
     return [C1, C2, C3, C4, C5]
+
+# def custom_backbone(input_image, train_bn=True):
+#     """ Build a custom backbone net with 5 stages """
+#
+#     # Stage 1
+#     #x = KL.ZeroPadding2D((3, 3))(input_image) # padding to keep same image width and height after 7x7 filter
+#     #x = KL.Conv2D(16, (7,7), strides=(1,1), name='conv1', use_bias=True)(x)
+#     x = KL.Conv2D(8, (7,7), strides=(1,1), name='conv1', use_bias=True)(input_image)
+#     x = BatchNorm(name='bn_conv1')(x, training=train_bn)
+#     x = KL.Activation('relu')(x)
+#     C1 = x
+#
+#     # Stage 2
+#     x = KL.Conv2D(16, (5,5), strides=(1,1), name='conv2', use_bias=True)(x)
+#     x = BatchNorm(name='bn_conv2')(x, training=train_bn)
+#     x = KL.Activation('relu')(x)
+#     C2 = x
+#
+#     # Stage 3
+#     x = KL.Conv2D(16, (3,3), strides=(1,1), name='conv3', use_bias=True)(x)
+#     x = BatchNorm(name='bn_conv3')(x, training=train_bn)
+#     x = KL.Activation('relu')(x)
+#     C3 = x
+#
+#     # Stage 4
+#     x = KL.Conv2D(16, (3,3), strides=(1,1), name='conv4', use_bias=True)(x)
+#     x = BatchNorm(name='bn_conv4')(x, training=train_bn)
+#     x = KL.Activation('relu')(x)
+#     C4 = x
+#
+#     # Stage 5
+#     x = KL.Conv2D(16, (3,3), strides=(1,1), name='conv5', use_bias=True)(x)
+#     x = BatchNorm(name='bn_conv5')(x, training=train_bn)
+#     x = KL.Activation('relu')(x)
+#     C5 = x
+#
+#     return [C1, C2, C3, C4, C5]
 
 ############################################################
 #  Proposal Layer
@@ -1952,13 +1985,12 @@ class MaskRCNN():
             _, C2, C3, C4, C5 = config.BACKBONE(input_image, stage5=True,
                                                 train_bn=config.TRAIN_BN)
         else:
-            #_, C2, C3, C4, C5 = resnet_graph(input_image, config.BACKBONE,
-            #                                 stage5=True, train_bn=config.TRAIN_BN)
             if config.BACKBONE=='custom':
-                _, C2, C3, C4, C5 = custom_backbone(input_image, train_bn=config.TRAIN_BN)
+                _, C2, C3, C4, C5 = custom_backbone(input_image, config.BACKBONE,
+                                                    stage5=True, train_bn=config.TRAIN_BN)
             else:
                 _, C2, C3, C4, C5 = resnet_graph(input_image, config.BACKBONE,
-                                             stage5=True, train_bn=config.TRAIN_BN)
+                                                 stage5=True, train_bn=config.TRAIN_BN)
 
         # Top-down Layers
         # TODO: add assert to varify feature map sizes match what's in config
@@ -2258,6 +2290,7 @@ class MaskRCNN():
                 tf.reduce_mean(layer.output, keepdims=True)
                 * self.config.LOSS_WEIGHTS.get(name, 1.))
             self.keras_model.metrics_tensors.append(loss)
+            # self.keras_model.metrics.append(loss)
 
     def set_trainable(self, layer_regex, keras_model=None, indent=0, verbose=1):
         """Sets model layers as trainable if their names match
