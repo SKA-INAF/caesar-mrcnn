@@ -742,7 +742,7 @@ def create_train_val_datasets(args, train_filename='train.dat', crossval_filenam
 
 
 	# - Load training/validation dataset
-	logger.info("Loading train & validation dataset ...")
+	logger.info("Creating train & crossval dataset classes ...")
 	dataset_train = SourceDataset()
 	dataset_train.set_class_dict(args.classdict)
 	dataset_train.convert_to_rgb= convert_to_rgb
@@ -752,17 +752,23 @@ def create_train_val_datasets(args, train_filename='train.dat', crossval_filenam
 	dataset_val.convert_to_rgb= convert_to_rgb
 
 	if args.dataloader=='datalist':
+		logger.info("Loading train dataset ...")
 		if dataset_train.load_data_from_list(datalist_train, args.maxnimgs)<0:
 			logger.error("Failed to load train dataset from file %s (see logs)..." % datalist_train)
 			return []
+
+		logger.info("Loading crossval dataset ...")
 		if dataset_val.load_data_from_list(datalist_val, args.maxnimgs)<0:
 			logger.error("Failed to load validation dataset from file %s (see logs)..." % datalist_val)
 			return []
 
 	elif args.dataloader=='datalist_json' or args.dataloader=='datadir':
+		logger.info("Loading train dataset ...")
 		if dataset_train.load_data_from_json_list(datalist_train, args.maxnimgs)<0:
 			logger.error("Failed to load train dataset from file %s (see logs)..." % datalist_train)
 			return []
+
+		logger.info("Loading crossval dataset ...")
 		if dataset_val.load_data_from_json_list(datalist_val, args.maxnimgs)<0:
 			logger.error("Failed to load validation dataset from file %s (see logs)..." % datalist_val)
 			return []
@@ -772,6 +778,7 @@ def create_train_val_datasets(args, train_filename='train.dat', crossval_filenam
 		return []
 
 	# - Prepare datasets
+	logger.info("Preparing train & crossval datasets ...")
 	dataset_train.prepare()
 	dataset_val.prepare()
 	logger.info("#%d/%d entries in the training/validation sets ..." % (dataset_train.loaded_imgs, dataset_val.loaded_imgs))
