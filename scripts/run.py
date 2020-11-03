@@ -720,6 +720,8 @@ def create_train_val_datasets(args, train_filename='train.dat', crossval_filenam
 	if has_train_val_datalist:
 		datalist_train= args.datalist_train
 		datalist_val= args.datalist_val
+		logger.info("Using input train (%s) & crossval (%s) datasets " % (datalist_train,datalist_val))
+		
 	else:
 		# - Create train/val filelists from input datalist
 		if args.dataloader=='datalist' or args.dataloader=='datalist_json':
