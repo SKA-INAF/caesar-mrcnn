@@ -585,7 +585,7 @@ class SourceDataset(utils.Dataset):
 			height= data.shape[0]
 			width= data.shape[1]
 			data= data.astype(np.bool)
-			if not mask:
+			if mask is None:
 				mask = np.zeros([height,width,nobjs],dtype=np.bool)
 			mask[:,:,counter]= data
 			counter+= 1
