@@ -2474,9 +2474,12 @@ class MaskRCNN():
         self.epoch = max(self.epoch, epochs)
 
         # plot a loss vs epochs graph and save to disk
+				
         model_name = self.config.BACKBONE + '_' + str(epochs) + 'epochs'
-        plt.plot(history.history['loss'])
-        plt.plot(history.history['val_loss'])
+        if 'loss' in history.history:
+            plt.plot(history.history['loss'])
+        if 'val_loss' in history.history:
+            plt.plot(history.history['val_loss'])
         plt.title(model_name + ' loss')
         plt.ylabel('loss')
         plt.xlabel('epochs')
