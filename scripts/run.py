@@ -1156,23 +1156,23 @@ def parse_args():
 	parser.add_argument('--mrcnn_mask_loss_weight', dest='mrcnn_mask_loss_weight', required=False, type=float, default='1',help='Mask loss weight') 
 	
 	parser.add_argument('--rpn_class_loss', dest='rpn_class_loss', action='store_true')
-	parser.add_argument('--no-rpn_class_loss', dest='rpn_class_loss', action='store_false')
+	parser.add_argument('--no_rpn_class_loss', dest='rpn_class_loss', action='store_false')
 	parser.set_defaults(rpn_class_loss=True)
 
 	parser.add_argument('--rpn_bbox_loss', dest='rpn_bbox_loss', action='store_true')
-	parser.add_argument('--no-rpn_bbox_loss', dest='rpn_bbox_loss', action='store_false')
+	parser.add_argument('--no_rpn_bbox_loss', dest='rpn_bbox_loss', action='store_false')
 	parser.set_defaults(rpn_bbox_loss=True)
 	
 	parser.add_argument('--mrcnn_class_loss', dest='mrcnn_class_loss', action='store_true')
-	parser.add_argument('--no-mrcnn_class_loss', dest='mrcnn_class_loss', action='store_false')
+	parser.add_argument('--no_mrcnn_class_loss', dest='mrcnn_class_loss', action='store_false')
 	parser.set_defaults(mrcnn_class_loss=True)
 
 	parser.add_argument('--mrcnn_bbox_loss', dest='mrcnn_bbox_loss', action='store_true')
-	parser.add_argument('--no-mrcnn_bbox_loss', dest='mrcnn_bbox_loss', action='store_false')
+	parser.add_argument('--no_mrcnn_bbox_loss', dest='mrcnn_bbox_loss', action='store_false')
 	parser.set_defaults(mrcnn_bbox_loss=True)
 
 	parser.add_argument('--mrcnn_mask_loss', dest='mrcnn_mask_loss', action='store_true')
-	parser.add_argument('--no-mrcnn_mask_loss', dest='mrcnn_mask_loss', action='store_false')
+	parser.add_argument('--no_mrcnn_mask_loss', dest='mrcnn_mask_loss', action='store_false')
 	parser.set_defaults(mrcnn_mask_loss=True)
 
 	# - TEST OPTIONS
