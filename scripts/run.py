@@ -1155,6 +1155,25 @@ def parse_args():
 	parser.add_argument('--mrcnn_bbox_loss_weight', dest='mrcnn_bbox_loss_weight', required=False, type=float, default='1',help='Bounding box loss weight') 
 	parser.add_argument('--mrcnn_mask_loss_weight', dest='mrcnn_mask_loss_weight', required=False, type=float, default='1',help='Mask loss weight') 
 	
+	parser.add_argument('--rpn_class_loss', dest='rpn_class_loss', action='store_true')
+	parser.add_argument('--no-rpn_class_loss', dest='rpn_class_loss', action='store_false')
+	parser.set_defaults(rpn_class_loss=True)
+
+	parser.add_argument('--rpn_bbox_loss', dest='rpn_bbox_loss', action='store_true')
+	parser.add_argument('--no-rpn_bbox_loss', dest='rpn_bbox_loss', action='store_false')
+	parser.set_defaults(rpn_bbox_loss=True)
+	
+	parser.add_argument('--mrcnn_class_loss', dest='mrcnn_class_loss', action='store_true')
+	parser.add_argument('--no-mrcnn_class_loss', dest='mrcnn_class_loss', action='store_false')
+	parser.set_defaults(mrcnn_class_loss=True)
+
+	parser.add_argument('--mrcnn_bbox_loss', dest='mrcnn_bbox_loss', action='store_true')
+	parser.add_argument('--no-mrcnn_bbox_loss', dest='mrcnn_bbox_loss', action='store_false')
+	parser.set_defaults(mrcnn_bbox_loss=True)
+
+	parser.add_argument('--mrcnn_mask_loss', dest='mrcnn_mask_loss', action='store_true')
+	parser.add_argument('--no-mrcnn_mask_loss', dest='mrcnn_mask_loss', action='store_false')
+	parser.set_defaults(mrcnn_mask_loss=True)
 
 	# - TEST OPTIONS
 	parser.add_argument('--scoreThr', required=False,default=0.7,type=float,metavar="Object detection score threshold to be used during test",help="Object detection score threshold to be used during test")
@@ -1307,13 +1326,30 @@ def main():
 	print("CLASS_NAMES (MODEL)")
 	print(class_names_model)
 
-	loss_weight_dict= {};
+	loss_weight_dict= {}
 	loss_weight_dict['rpn_class_loss']= args.rpn_class_loss_weight
 	loss_weight_dict['rpn_bbox_loss']= args.rpn_bbox_loss_weight
 	loss_weight_dict['mrcnn_class_loss']= args.mrcnn_class_loss_weight
 	loss_weight_dict['mrcnn_bbox_loss']= args.mrcnn_bbox_loss_weight
 	loss_weight_dict['mrcnn_mask_loss']= args.mrcnn_mask_loss_weight
 
+	use_loss_dict= {}
+	use_loss_dict['rpn_class_loss']= True
+	use_loss_dict['rpn_bbox_loss']= True
+	use_loss_dict['mrcnn_class_loss']= True
+	use_loss_dict['mrcnn_bbox_loss']= True
+	use_loss_dict['mrcnn_mask_loss']= True
+ 
+	if not args.rpn_class_loss:
+		use_loss_dict['rpn_class_loss']= False
+	if not args.rpn_bbox_loss:
+		use_loss_dict['rpn_bbox_loss']= False
+	if not args.mrcnn_class_loss:
+		use_loss_dict['mrcnn_class_loss']= False
+	if not args.mrcnn_bbox_loss:
+		use_loss_dict['mrcnn_bbox_loss']= False
+	if not args.mrcnn_mask_loss:
+		use_loss_dict['mrcnn_mask_loss']= False
 
 	#===========================
 	#==   LOAD DATASETS
@@ -1401,6 +1437,7 @@ def main():
 	config.TRAIN_ROIS_PER_IMAGE= args.train_rois_per_image
 	config.RPN_ANCHOR_RATIOS= rpn_anchor_ratios
 	config.LOSS_WEIGHTS= loss_weight_dict
+	config.USE_LOSSES= use_loss_dict
 
 	config.display()
 

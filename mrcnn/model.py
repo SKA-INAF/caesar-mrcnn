@@ -2262,6 +2262,12 @@ class MaskRCNN():
             layer = self.keras_model.get_layer(name)
             if layer.output in self.keras_model.losses:
                 continue
+            
+            # - Exclude loss if disabled in config (added by Simone)
+            if not self.config.USE_LOSSES.get(name,True):
+                print('Will not include %s in total loss ...' % name)
+                continue  
+
             loss = (
                 tf.reduce_mean(layer.output, keepdims=True)
                 * self.config.LOSS_WEIGHTS.get(name, 1.))
