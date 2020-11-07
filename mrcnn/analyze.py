@@ -9,12 +9,13 @@ import numpy as np
 
 
 # Import Mask RCNN
-
 from mrcnn.config import Config
 from mrcnn import model as modellib, utils
 from mrcnn import visualize
 from mrcnn.graph import Graph
 
+# Import networkx module
+import networkx as nx
 
 # Import image modules
 import skimage.draw
@@ -241,6 +242,7 @@ class Analyzer(object):
 		self.class_ids_gt_merged= []
 		self.bboxes_gt= []
 		self.captions_gt= []
+		self.split_gtmasks= False
 
 		# - Processed detected masks
 		self.masks_final= []
@@ -250,6 +252,9 @@ class Analyzer(object):
 		self.captions= []
 		self.remap_classids= False
 		self.classid_map= {}
+		self.split_masks= False
+		self.merge_overlapped_masks= True
+		self.select_best_overlapped_masks= True
 
 		# - Process options
 		self.score_thr= 0.7
@@ -342,9 +347,9 @@ class Analyzer(object):
 		self.class_names_gt= self.dataset.class_names
 		self.masks_gt= self.dataset.load_gt_masks(self.image_id,binary=False)
 		self.class_ids_gt = self.dataset.image_info[self.image_id]["class_ids"]
-		logger.info("class_ids_gt elements: {}".format(' '.join(map(str, self.class_ids_gt))))
-		print("masks_gt shape")
-		print(self.masks_gt.shape)
+		logger.debug("class_ids_gt elements: {}".format(' '.join(map(str, self.class_ids_gt))))
+		#print("masks_gt shape")
+		#print(self.masks_gt.shape)
 
 		self.labels_gt= []
 		self.colors_gt= []
@@ -353,7 +358,7 @@ class Analyzer(object):
 		for item in self.class_ids_gt:
 			label= self.class_names_gt[item]
 			color= self.class_color_map[label]
-			logger.info("label_gt=%s" % label)	
+			logger.debug("label_gt=%s" % label)	
 			self.labels_gt.append(label)
 			self.colors_gt.append(color)
 			self.captions_gt.append(label)
@@ -462,76 +467,93 @@ class Analyzer(object):
 		self.bboxes_gt= []
 		self.captions_gt= []
 
-		# - Inspect ground truth masks
-		masks_gt_det= []
-		class_ids_gt_det= []
-		logger.info("Inspecting %d ground truth masks ..." % (self.masks_gt.shape[-1]))
+		# - Split ground truth masks and merge connected ones (if enabled)
+		if self.split_gtmasks:
 
-		for k in range(self.masks_gt.shape[-1]):
-			mask_gt= self.masks_gt[:,:,k]
-			label_gt= self.labels_gt[k]
-			class_id_gt= self.class_ids_gt[k]
+			# - Split non-connected masks for all objects but galaxies
+			logger.info("Processing %d ground truth masks to split non-connected ..." % (self.masks_gt.shape[-1]))
 
-			if label_gt=='galaxy_C2' or label_gt=='galaxy_C3' or label_gt=='galaxy':
-				masks_gt_det.append(mask_gt)
-				class_ids_gt_det.append(class_id_gt)
-				continue
-
-			component_labels_gt, ncomponents_gt= self.extract_mask_connected_components(mask_gt)
-			logger.debug("Found %d sub components in gt mask no. %d ..." % (ncomponents_gt,k))
+			masks_gt_det= []
+			class_ids_gt_det= []
 		
-			for i in range(ncomponents_gt):	
-				mask_indices= np.where(component_labels_gt==1)
-				extracted_mask= np.zeros(mask_gt.shape,dtype=mask_gt.dtype)
-				extracted_mask[mask_indices]= 1
+			for k in range(self.masks_gt.shape[-1]):
+				mask_gt= self.masks_gt[:,:,k]
+				label_gt= self.labels_gt[k]
+				class_id_gt= self.class_ids_gt[k]
 
-				# - Extract true object id from gt mask pixel values (1=sidelobes,2=sources,3=...)
-				#   Override class_id_gt
-				# object_classid= mask_gt[mask_indices[0][0],mask_indices[1][0]] # Disabled for the moment
-				object_classid= class_id_gt
+				if label_gt=='galaxy_C2' or label_gt=='galaxy_C3' or label_gt=='galaxy':
+					masks_gt_det.append(mask_gt)
+					class_ids_gt_det.append(class_id_gt)
+					continue
+
+				component_labels_gt, ncomponents_gt= self.extract_mask_connected_components(mask_gt)
+				logger.debug("Found %d sub components in gt mask no. %d ..." % (ncomponents_gt,k))
+		
+				for i in range(ncomponents_gt):	
+					mask_indices= np.where(component_labels_gt==1)
+					extracted_mask= np.zeros(mask_gt.shape,dtype=mask_gt.dtype)
+					extracted_mask[mask_indices]= 1
+
+					# - Extract true object id from gt mask pixel values (1=sidelobes,2=sources,3=...)
+					#   Override class_id_gt
+					# object_classid= mask_gt[mask_indices[0][0],mask_indices[1][0]] # Disabled for the moment
+					object_classid= class_id_gt
 				
-				logger.info("gt mask no. %d (subcomponent no. %d): classid_gt=%d ..." % (k,i,object_classid))
+					logger.info("gt mask no. %d (subcomponent no. %d): classid_gt=%d ..." % (k,i,object_classid))
 
-				masks_gt_det.append(extracted_mask)
-				class_ids_gt_det.append(object_classid)
+					masks_gt_det.append(extracted_mask)
+					class_ids_gt_det.append(object_classid)
 			
-		N= len(masks_gt_det)
-		g= Graph(N)
-		for i in range(N):
-			for j in range(i+1,N):
-				connected= self.are_mask_connected(masks_gt_det[i],masks_gt_det[j])
-				same_class= (class_ids_gt_det[i]==class_ids_gt_det[j])
-				mergeable= (connected and same_class)
-				if mergeable:
-					logger.debug("GT mask (%d,%d) have connected components and can be merged..." % (i,j))
-					g.addEdge(i,j)
+			N= len(masks_gt_det)
+			g= Graph(N)
+			for i in range(N):
+				for j in range(i+1,N):
+					connected= self.are_mask_connected(masks_gt_det[i],masks_gt_det[j])
+					same_class= (class_ids_gt_det[i]==class_ids_gt_det[j])
+					mergeable= (connected and same_class)
+					if mergeable:
+						logger.debug("GT mask (%d,%d) have connected components and can be merged..." % (i,j))
+						g.addEdge(i,j)
 
-		cc = g.connectedComponents()
-		print(cc) 
+			cc = g.connectedComponents()
+			print("--> Connected components")
+			print(cc) 
 
 		
-		for i in range(len(cc)):
-			if not cc[i]:
-				continue
+			for i in range(len(cc)):
+				if not cc[i]:
+					continue
 		
-			n_merged= len(cc[i])
+				n_merged= len(cc[i])
 
-			for j in range(n_merged):
-				index= cc[i][j]
-				mask= masks_gt_det[index]
-				class_id= class_ids_gt_det[index]
+				for j in range(n_merged):
+					index= cc[i][j]
+					mask= masks_gt_det[index]
+					class_id= class_ids_gt_det[index]
 			
-				logger.debug("Merging GT mask no. %d (class_id=%d) ..." % (index,class_id))
-				if j==0:
-					merged_mask= mask
-					#merged_score= score
-				else:
-					merged_mask= self.merge_masks(merged_mask,mask)
+					logger.debug("Merging GT mask no. %d (class_id=%d) ..." % (index,class_id))
+					if j==0:
+						merged_mask= mask
+						#merged_score= score
+					else:
+						merged_mask= self.merge_masks(merged_mask,mask)
 	
-			self.masks_gt_merged.append(merged_mask)
-			self.class_ids_gt_merged.append(class_id)
+				self.masks_gt_merged.append(merged_mask)
+				self.class_ids_gt_merged.append(class_id)
 		
+		else:
+			# - No actions done on input gt masks
+			logger.info("#%d true objects present in this image ..." % self.masks_gt.shape[-1])
+			for k in range(self.masks_gt.shape[-1]):
+				mask_gt= self.masks_gt[:,:,k]
+				label_gt= self.labels_gt[k]
+				class_id_gt= self.class_ids_gt[k]
+				logger.info("GT mask no. %d: classId=%d, label=%s" % (k,class_id_gt,label_gt))
+				self.masks_gt_merged.append(mask_gt)
+				self.class_ids_gt_merged.append(class_id_gt)
+
 		
+		# - Compute GT bbox and captions
 		for i in range(len(self.masks_gt_merged)):
 			mask= self.masks_gt_merged[i]
 			height= mask.shape[0]
@@ -572,9 +594,9 @@ class Analyzer(object):
 			mask= self.masks[:, :, i]
 			class_id = self.class_ids[i]
 			score = self.scores[i]
-			logger.info("class_id=%d" % (class_id))
-			print("self.class_names")
-			print(self.class_names)
+			logger.debug("class_id=%d" % (class_id))
+			#print("self.class_names")
+			#print(self.class_names)
 			label = self.class_names[class_id]
 			caption = "{} {:.3f}".format(label, score)
 			if score<self.score_thr:
@@ -587,8 +609,7 @@ class Analyzer(object):
 			scores_sel.append(score)
 			nobjects_sel+= 1
 		
-		#logger.info("%d objects selected in this image ..." % nobjects_sel)
-		logger.info("%d objects selected in this image ..." % len(masks_sel))
+		logger.info("#%d objects selected in this image ..." % len(masks_sel))
 
 		# - Sort objects by descending scores
 		sort_indices= np.argsort(scores_sel)[::-1]
@@ -598,178 +619,270 @@ class Analyzer(object):
 		masks_det= []
 		class_ids_det= []
 		scores_det= []
-		nobjects_det= 0
+		
+		if self.split_masks:
 
-		for index in sort_indices:
-			mask= masks_sel[index]	
-			class_id= class_ids_sel[index]
-			label= self.class_names[class_id]
-			score= scores_sel[index]
+			logger.info("Splitting non-connected detected objects ...")
+		
+			for index in sort_indices:
+				mask= masks_sel[index]	
+				class_id= class_ids_sel[index]
+				label= self.class_names[class_id]
+				score= scores_sel[index]
 
-			# - Skip if class id is galaxy
-			if label=='galaxy_C2' or label=='galaxy_C3' or label=='galaxy':
+				# - Skip if class id is galaxy
+				if label=='galaxy_C2' or label=='galaxy_C3' or label=='galaxy':
+					masks_det.append(mask)
+					class_ids_det.append(class_id)
+					scores_det.append(score)
+					logger.info("Selecting object %s (id=%d) with score %f>thr=%f ..." % (label,class_id,score,self.score_thr))
+					continue
+
+				# - Extract components masks
+				component_labels, ncomponents= self.extract_mask_connected_components(mask)
+				logger.info("Found %d sub components in mask no. %d ..." % (ncomponents,index))
+		
+				# - Extract indices of components and create masks for extracted components
+				for i in range(ncomponents):	
+					extracted_mask= np.zeros(mask.shape,dtype=mask.dtype)
+					extracted_mask= np.where(component_labels==i+1, [1], [0])
+
+					masks_det.append(extracted_mask)
+					class_ids_det.append(class_id)
+					scores_det.append(score)
+					logger.info("Selecting object %s (id=%d) with score %f>thr=%f ..." % (label,class_id,score,self.score_thr))
+			
+			logger.info("Found %d components overall (after non-connected component extraction) in this image ..." % (len(masks_det)))
+		
+		else:
+			# Do not split det masks
+			for index in sort_indices:
+				mask= masks_sel[index]	
+				class_id= class_ids_sel[index]
+				label= self.class_names[class_id]
+				score= scores_sel[index]
 				masks_det.append(mask)
 				class_ids_det.append(class_id)
 				scores_det.append(score)
-				logger.info("Selecting object %s (id=%d) with score %f>thr=%f ..." % (label,class_id,score,self.score_thr))
-				continue
-
-			# - Extract components masks
-			component_labels, ncomponents= self.extract_mask_connected_components(mask)
-			logger.info("Found %d sub components in mask no. %d ..." % (ncomponents,index))
 		
-			# - Extract indices of components and create masks for extracted components
-			#indices = np.indices(mask.shape).T[:,:,[1, 0]]
-			
-			#print("DEBUG: component_labels.shape")	
-			#print(component_labels.shape)
-			#print("DEBUG: mask.shape")
-			#print(mask.shape)
-			#print("DEBUG: np.indices(mask.shape)")
-			#print(np.indices(mask.shape).shape)
-			#print("DEBUG: indices")
-			#print(indices.shape)
-			#print("DEBUG: indices2")
-			#print(indices2.shape)			
-
-			for i in range(ncomponents):	
-				#mask_indices= indices[component_labels==i+1]
-				extracted_mask= np.zeros(mask.shape,dtype=mask.dtype)
-				#extracted_mask[mask_indices[:,0],mask_indices[:,1]]= 1
-				extracted_mask= np.where(component_labels==i+1, [1], [0])
-
-				masks_det.append(extracted_mask)
-				class_ids_det.append(class_id)
-				scores_det.append(score)
-				logger.info("Selecting object %s (id=%d) with score %f>thr=%f ..." % (label,class_id,score,self.score_thr))
-			
-
-		logger.info("Found %d components overall (after non-connected component extraction) in this image ..." % (len(masks_det)))
 		
-		# - Init undirected graph
-		#   Add links between masks that are connected
-		N= len(masks_det)
-		g= Graph(N)
-		for i in range(N):
-			for j in range(i+1,N):
-				connected= self.are_mask_connected(masks_det[i],masks_det[j])
-				same_class= (class_ids_det[i]==class_ids_det[j])
-				mergeable= (connected and same_class)
-				if mergeable:
-					logger.debug("Mask (%d,%d) have connected components and can be merged..." % (i,j))
-					g.addEdge(i,j)
-
-		# - Compute connected masks
-		cc = g.connectedComponents()
-		#print(cc) 
-
 		# - Merge connected masks
 		masks_merged= []
 		class_ids_merged= []
 		scores_merged= []
 
-		for i in range(len(cc)):
-			if not cc[i]:
-				continue
-		
-			score_avg= 0
-			n_merged= len(cc[i])
+		if self.merge_overlapped_masks:
+			# - Init undirected graph
+			#   Add links between masks that are connected
+			N= len(masks_det)
+			g= Graph(N)
+			for i in range(N):
+				for j in range(i+1,N):
+					connected= self.are_mask_connected(masks_det[i],masks_det[j])
+					same_class= (class_ids_det[i]==class_ids_det[j])
+					mergeable= (connected and same_class)
+					if mergeable:
+						logger.debug("Detected masks (%d,%d) have connected components and can be merged..." % (i,j))
+						g.addEdge(i,j)
 
-			for j in range(n_merged):
-				index= cc[i][j]
+			# - Compute connected masks
+			cc = g.connectedComponents()
+			#print(cc)
+
+			# - Merge connected masks
+			for i in range(len(cc)):
+				if not cc[i]:
+					continue
+		
+				score_avg= 0
+				n_merged= len(cc[i])
+
+				for j in range(n_merged):
+					index= cc[i][j]
+					mask= masks_det[index]
+					class_id= class_ids_det[index]
+					score= scores_det[index]
+					score_avg+= score
+
+					logger.debug("Merging mask no. %d ..." % index)
+					if j==0:
+						merged_mask= mask
+						merged_score= score
+					else:
+						merged_mask= self.merge_masks(merged_mask,mask)
+	
+				score_avg*= 1./n_merged	
+				masks_merged.append(merged_mask)
+				class_ids_merged.append(class_id)
+				scores_merged.append(score_avg)
+		
+			logger.info("#%d detected object masks left after merging connected ones ..." % len(masks_merged))
+
+		else:
+			# - Do not merge connected masks
+			for index in range(len(masks_det)):
 				mask= masks_det[index]
 				class_id= class_ids_det[index]
 				score= scores_det[index]
-				score_avg+= score
-
-				logger.debug("Merging mask no. %d ..." % index)
-				if j==0:
-					merged_mask= mask
-					merged_score= score
-				else:
-					merged_mask= self.merge_masks(merged_mask,mask)
-	
-			score_avg*= 1./n_merged	
-			masks_merged.append(merged_mask)
-			class_ids_merged.append(class_id)
-			scores_merged.append(score_avg)
-		
-		logger.info("#%d masks found after merging ..." % len(masks_merged))
+				masks_merged.append(mask)
+				class_ids_merged.append(class_id)
+				scores_merged.append(score)
 
 
 		# - Find if there are overlapping masks with different class id
-		#   If so retain the one with largest score
-		N_final= len(masks_merged)
-		g_final= Graph(N_final)
-		for i in range(N_final):
-			for j in range(i+1,N_final):
-				connected= self.are_mask_connected(masks_merged[i],masks_merged[j])
-				same_class= (class_ids_merged[i]==class_ids_merged[j])
-				mergeable= connected
-				if mergeable:
-					logger.debug("Merged mask (%d,%d) have connected components and are selected for final selection..." % (i,j))
-					g_final.addEdge(i,j)
+		#   If so retain the one with largest score (using max graph clique)
+		if self.select_best_overlapped_masks:
 
-		cc_final = g_final.connectedComponents()
+			logger.info("Inspecting overlapped objects with different ids and retaining the best one (largest score) ...")
+
+			N_final= len(masks_merged)
+			#g_final= Graph(N_final)
+			g_final= nx.Graph()
+
+			for i in range(N_final):
+				for j in range(i+1,N_final):
+					connected= self.are_mask_connected(masks_merged[i],masks_merged[j])
+					same_class= (class_ids_merged[i]==class_ids_merged[j])
+					mergeable= connected
+					if mergeable:
+						logger.info("Merged mask (%d,%d) have connected components and are selected for final selection..." % (i,j))
+						#g_final.addEdge(i,j)
+						g_final.add_edge(i,j)
+
+			#cc_final= g_final.connectedComponents()
+			cc_final= list(nx.find_cliques(g_final))
+
+			# - Sort cliques by largest component object score
+			clique_max_scores= []
+			clique_max_score_index= []
+			for item in cc_final:
+				max_score= -1
+				max_score_index= -1
+				for index in item: 
+					score= scores_merged[index]
+					if score>max_score:
+						max_score= score
+						max_score_index= index
+				clique_max_scores.append(max_score)
+				clique_max_score_index.append(max_score_index)
+
+			sorted_clique_indices= sorted(range(len(clique_max_scores)), key=lambda k: clique_max_scores[k], reverse=True)
+
+			# - Select objects		
+			is_selected= [True]*len(masks_merged)
+
+			for clique_index in sorted_clique_indices:
+				index_best= clique_max_score_index[clique_index]
+				score_best= clique_max_scores[clique_index]
+				class_id_best= class_ids_merged[index_best] 
+				
+				if is_selected[index_best]:
+					logger.info("Mask with index %d (score=%f, class=%d) selected as the best among all the overlapping masks ..." % (index_best,score_best,class_id_best))
+
+				for index in cc_final[clique_index]: 
+					score= scores_merged[index]
+					class_id= class_ids_merged[index]
+					if index!=index_best and is_selected[index]:
+						is_selected[index]= False
+						logger.info("Mask with index %d (score=%f, class=%d) will be excluded ..." % (index,score,class_id))
+
+			# - Compute bounding box, check integrity and set final masks
+			for index in range(len(masks_merged)):
+				if not is_selected[index]:
+					continue
+				height= masks_merged[index].shape[0]
+				width= masks_merged[index].shape[1]
+				mask_expanded = np.zeros([height,width,1],dtype=np.bool)
+				mask_expanded[:,:,0]= masks_merged[index]
+				bbox= utils.extract_bboxes(mask_expanded)
+
+				if bbox[0][1]>=bbox[0][3] or bbox[0][0]>=bbox[0][2]:
+					logger.warn("Invalid det bbox(%d,%d,%d,%d), skip it ..." % (bbox[0][1],bbox[0][3],bbox[0][0],bbox[0][2]) )
+					continue
+
+				# - Add to collection
+				label= self.class_names[class_ids_merged[index]]
+				caption = "{} {:.2f}".format(label, scores_merged[index])
+
+				self.masks_final.append(masks_merged[index])
+				self.class_ids_final.append(class_ids_merged[index])
+				self.scores_final.append(scores_merged[index])
+				self.bboxes.append(bbox[0])
+				self.captions.append(caption)
 		
+			logger.info("#%d detected object masks finally selected after selecting best among overlapped ones ..." % len(self.masks_final))
 
-		for i in range(len(cc_final)):
-			if not cc_final[i]:
-				continue
+				
+
+			#for i in range(len(cc_final)):
+			#	if not cc_final[i]:
+			#		continue
 		
-			score_best= 0
-			index_best= -1
-			class_id_best= 0
-			n_overlapped= len(cc_final[i])
+			#	score_best= 0
+			#	index_best= -1
+			#	class_id_best= 0
+			#	n_overlapped= len(cc_final[i])
 
-			for j in range(n_overlapped):
-				index= cc_final[i][j]
-				mask= masks_merged[index]
-				class_id= class_ids_merged[index]
-				score= scores_merged[index]
-				if score>score_best:	
-					score_best= score		
-					index_best= index
-					class_id_best= class_id
+			#	for j in range(n_overlapped):
+			#		index= cc_final[i][j]
+			#		mask= masks_merged[index]
+			#		class_id= class_ids_merged[index]
+			#		score= scores_merged[index]
+			#		if score>score_best:	
+			#			score_best= score		
+			#			index_best= index
+			#			class_id_best= class_id
 			
-			logger.debug("Mask with index %s (score=%f, class=%d) selected as the best among all the overlapping masks..." % (index_best,score_best,class_id_best))
+			#	logger.info("Mask with index %s (score=%f, class=%d) selected as the best among all the overlapping masks (len(cc_final)=%d,n_overlapped=%d)..." % (index_best,score_best,class_id_best,len(cc_final),n_overlapped))
 
-			# - Compute bounding box, check integrity
-			height= masks_merged[index_best].shape[0]
-			width= masks_merged[index_best].shape[1]
-			mask_expanded = np.zeros([height,width,1],dtype=np.bool)
-			mask_expanded[:,:,0]= masks_merged[index_best]
-			bbox= utils.extract_bboxes(mask_expanded)
+			#	# - Compute bounding box, check integrity
+			#	height= masks_merged[index_best].shape[0]
+			#	width= masks_merged[index_best].shape[1]
+			#	mask_expanded = np.zeros([height,width,1],dtype=np.bool)
+			#	mask_expanded[:,:,0]= masks_merged[index_best]
+			#	bbox= utils.extract_bboxes(mask_expanded)
 
-			if bbox[0][1]>=bbox[0][3] or bbox[0][0]>=bbox[0][2]:
-				logger.warn("Invalid det bbox(%d,%d,%d,%d), skip it ..." % (bbox[0][1],bbox[0][3],bbox[0][0],bbox[0][2]) )
-				continue
+			#	if bbox[0][1]>=bbox[0][3] or bbox[0][0]>=bbox[0][2]:
+			#		logger.warn("Invalid det bbox(%d,%d,%d,%d), skip it ..." % (bbox[0][1],bbox[0][3],bbox[0][0],bbox[0][2]) )
+			#		continue
 
-			# - Add to collection
-			label= self.class_names[class_ids_merged[index_best]]
-			caption = "{} {:.2f}".format(label, scores_merged[index_best])
+			#	# - Add to collection
+			#	label= self.class_names[class_ids_merged[index_best]]
+			#	caption = "{} {:.2f}".format(label, scores_merged[index_best])
 
-			self.masks_final.append(masks_merged[index_best])
-			self.class_ids_final.append(class_ids_merged[index_best])
-			self.scores_final.append(scores_merged[index_best])
-			self.bboxes.append(bbox[0])
-			self.captions.append(caption)
+			#	self.masks_final.append(masks_merged[index_best])
+			#	self.class_ids_final.append(class_ids_merged[index_best])
+			#	self.scores_final.append(scores_merged[index_best])
+			#	self.bboxes.append(bbox[0])
+			#	self.captions.append(caption)
 		
-		logger.info("#%d det masks finally selected..." % len(self.masks_final))
+			#logger.info("#%d detected object masks finally selected after selecting best among overlapped ones ..." % len(self.masks_final))
 
-		# - Compute bounding boxes & image captions from selected masks
-		#for i in range(len(self.masks_final)):
-		#	mask= self.masks_final[i]
-		#	height= mask.shape[0]
-		#	width= mask.shape[1]
-		#	mask_expanded = np.zeros([height,width,1],dtype=np.bool)
-		#	mask_expanded[:,:,0]= mask
-		#	bbox= utils.extract_bboxes(mask_expanded)
-		#	self.bboxes.append(bbox[0])
-		# label= self.class_names[self.class_ids_final[i]]
-		#	score= self.scores_final[i]
-		#	caption = "{} {:.2f}".format(label, score)
-		#	self.captions.append(caption)
+		else:	
+			# - Do not select best overlapping objects
+			for index in range(len(masks_merged)):
+				# - Compute bounding box, check integrity
+				height= masks_merged[index].shape[0]
+				width= masks_merged[index].shape[1]
+				mask_expanded = np.zeros([height,width,1],dtype=np.bool)
+				mask_expanded[:,:,0]= masks_merged[index]
+				bbox= utils.extract_bboxes(mask_expanded)
+
+				if bbox[0][1]>=bbox[0][3] or bbox[0][0]>=bbox[0][2]:
+					logger.warn("Invalid det bbox(%d,%d,%d,%d), skip it ..." % (bbox[0][1],bbox[0][3],bbox[0][0],bbox[0][2]) )
+					continue
+
+				# - Add to collection
+				label= self.class_names[class_ids_merged[index]]
+				caption = "{} {:.2f}".format(label, scores_merged[index])
+
+				self.masks_final.append(masks_merged[index])
+				self.class_ids_final.append(class_ids_merged[index])
+				self.scores_final.append(scores_merged[index])
+				self.bboxes.append(bbox[0])
+				self.captions.append(caption)
+
+			logger.info("#%d detected object masks finally selected ..." % len(self.masks_final))
 
 
 	# ============================
@@ -809,8 +922,8 @@ class Analyzer(object):
 					continue
 
 				iou= utils.get_iou(bbox, bbox_gt)
-				logger.debug("IOU(det=%d,true=%d)=%f" % (j,i,iou))
-				if iou>self.iou_thr and iou>=iou_best:
+				logger.info("IOU(det=%d,true=%d)=%f" % (j,i,iou))
+				if iou>=self.iou_thr and iou>=iou_best:
 					index_best= j
 					iou_best= iou
 					score_best= score
@@ -855,7 +968,7 @@ class Analyzer(object):
 					continue
 
 				iou= utils.get_iou(bbox, bbox_gt)
-				if iou>self.iou_thr and iou>=iou_best:
+				if iou>=self.iou_thr and iou>=iou_best:
 					index_best= i
 					iou_best= iou
 		
@@ -864,6 +977,8 @@ class Analyzer(object):
 				class_id_det= self.class_ids_gt_merged[index_best]	
 				if class_id==class_id_det:
 					self.nobjs_det_right[0][class_id]+= 1
+					#logger.info("Det object %d associated to true object %d (IOU=%f) ..." % (j,index_best,iou_best))
+					#print(self.nobjs_det_right)
 
 	
 		for j in range(self.n_classes):
