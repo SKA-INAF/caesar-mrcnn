@@ -945,13 +945,6 @@ class Analyzer(object):
 					continue
 
 				iou= utils.get_iou(bbox, bbox_gt)
-				print("self.masks_final[j].shape")
-				print(self.masks_final[j].shape)
-				print(self.masks_final[j].dtype)
-				print("self.masks_gt_merged[i].shape")
-				print(self.masks_gt_merged[i].shape)
-				print(self.masks_gt_merged[i].dtype)
-
 				mask_iou= jaccard_score(self.masks_final[j].flatten(), self.masks_gt_merged[i].flatten().astype(np.bool), average='binary')
 
 				logger.info("IOU(det=%d,true=%d)=%f, MaskIOU(det=%d,true=%d)=%f" % (j,i,iou,j,i,mask_iou))
