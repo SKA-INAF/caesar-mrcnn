@@ -256,7 +256,7 @@ class Analyzer(object):
 		self.merge_overlapped_masks= True
 		self.select_best_overlapped_masks= True
 		self.split_source_sidelobe= True
-		self.source_sidelobe_overlap_iou_thr= 0.1 # If they overlap less than thr, keep separate
+		#self.source_sidelobe_overlap_iou_thr= 0.1 # If they overlap less than thr, keep separate
 		self.merge_overlap_iou_thr= 0.3 # overlapping objects with same class with IOU>thr are merged in a unique object
 
 		# - Process options
@@ -945,7 +945,14 @@ class Analyzer(object):
 					continue
 
 				iou= utils.get_iou(bbox, bbox_gt)
-				mask_iou= jaccard_score(self.masks_final[j].flatten(), self.masks_gt_merged[i].flatten(), average='binary')
+				print("self.masks_final[j].shape")
+				print(self.masks_final[j].shape)
+				print(self.masks_final[j].dtype)
+				print("self.masks_gt_merged[i].shape")
+				print(self.masks_gt_merged[i].shape)
+				print(self.masks_gt_merged[i].dtype)
+
+				mask_iou= jaccard_score(self.masks_final[j].flatten(), self.masks_gt_merged[i].flatten().astype(np.bool), average='binary')
 
 				logger.info("IOU(det=%d,true=%d)=%f, MaskIOU(det=%d,true=%d)=%f" % (j,i,iou,j,i,mask_iou))
 				#if iou>=self.iou_thr and iou>=iou_best:
@@ -995,7 +1002,7 @@ class Analyzer(object):
 					continue
 
 				iou= utils.get_iou(bbox, bbox_gt)
-				mask_iou= jaccard_score(self.masks_final[j].flatten(), self.masks_gt_merged[i].flatten(), average='binary')
+				mask_iou= jaccard_score(self.masks_final[j].flatten(), self.masks_gt_merged[i].flatten().astype(np.bool), average='binary')
 
 				#if iou>=self.iou_thr and iou>=iou_best:
 				if mask_iou>=self.iou_thr and mask_iou>=iou_best:
