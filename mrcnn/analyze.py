@@ -21,7 +21,7 @@ import networkx as nx
 import skimage.draw
 import skimage.measure
 from skimage.measure import find_contours
-
+from sklearn.metrics import jaccard_score
 
 ## Import graphics modules
 import matplotlib
@@ -255,6 +255,9 @@ class Analyzer(object):
 		self.split_masks= False
 		self.merge_overlapped_masks= True
 		self.select_best_overlapped_masks= True
+		self.split_source_sidelobe= True
+		self.source_sidelobe_overlap_iou_thr= 0.1 # If they overlap less than thr, keep separate
+		self.merge_overlap_iou_thr= 0.3 # overlapping objects with same class with IOU>thr are merged in a unique object
 
 		# - Process options
 		self.score_thr= 0.7
@@ -680,7 +683,11 @@ class Analyzer(object):
 				for j in range(i+1,N):
 					connected= self.are_mask_connected(masks_det[i],masks_det[j])
 					same_class= (class_ids_det[i]==class_ids_det[j])
-					mergeable= (connected and same_class)
+					mask_iou= jaccard_score(masks_det[i].flatten(), masks_det[j].flatten(), average='binary')
+					above_merge_overlap= (mask_iou>=self.merge_overlap_iou_thr)
+												
+					mergeable= (connected and same_class and above_merge_overlap)
+					#mergeable= (connected and same_class)
 					if mergeable:
 						logger.debug("Detected masks (%d,%d) have connected components and can be merged..." % (i,j))
 						g.addEdge(i,j)
@@ -740,10 +747,26 @@ class Analyzer(object):
 			g_final= nx.Graph()
 
 			for i in range(N_final):
+				class_id_i= class_ids_merged[i]
+				label_i= self.class_names[class_id_i]
+				mask_i= masks_merged[i]
+				
 				for j in range(i+1,N_final):
+					class_id_j= class_ids_merged[j]
+					label_j= self.class_names[class_id_j]
+					mask_j= masks_merged[j]
 					connected= self.are_mask_connected(masks_merged[i],masks_merged[j])
-					same_class= (class_ids_merged[i]==class_ids_merged[j])
+					#same_class= (class_id_i==class_id_j)
+					is_sidelobe_other= (label_i=='sidelobe' and label_j!='sidelobe') or (label_i!='sidelobe' and label_j=='sidelobe')
+
 					mergeable= connected
+
+					if connected and self.split_source_sidelobe and is_sidelobe_other:
+						mask_iou= jaccard_score(mask_i.flatten(), mask_j.flatten(), average='binary')
+						if mask_iou<self.merge_overlap_iou_thr:
+							logger.info("IOU=%f<%f between overlapping sidelobe-other class, so won't merge in this case..." % (mask_iou,self.merge_overlap_iou_thr))
+							mergeable= False						
+
 					if mergeable:
 						logger.info("Merged mask (%d,%d) have connected components and are selected for final selection..." % (i,j))
 						#g_final.addEdge(i,j)
@@ -922,10 +945,14 @@ class Analyzer(object):
 					continue
 
 				iou= utils.get_iou(bbox, bbox_gt)
-				logger.info("IOU(det=%d,true=%d)=%f" % (j,i,iou))
-				if iou>=self.iou_thr and iou>=iou_best:
+				mask_iou= jaccard_score(self.masks_final[j].flatten(), self.masks_gt_merged[i].flatten(), average='binary')
+
+				logger.info("IOU(det=%d,true=%d)=%f, MaskIOU(det=%d,true=%d)=%f" % (j,i,iou,j,i,mask_iou))
+				#if iou>=self.iou_thr and iou>=iou_best:
+				if mask_iou>=self.iou_thr and mask_iou>=iou_best:
 					index_best= j
-					iou_best= iou
+					#iou_best= iou
+					iou_best= mask_iou
 					score_best= score
 
 			# - Update confusion matrix
@@ -968,9 +995,13 @@ class Analyzer(object):
 					continue
 
 				iou= utils.get_iou(bbox, bbox_gt)
-				if iou>=self.iou_thr and iou>=iou_best:
+				mask_iou= jaccard_score(self.masks_final[j].flatten(), self.masks_gt_merged[i].flatten(), average='binary')
+
+				#if iou>=self.iou_thr and iou>=iou_best:
+				if mask_iou>=self.iou_thr and mask_iou>=iou_best:
 					index_best= i
-					iou_best= iou
+					#iou_best= iou
+					iou_best= mask_iou
 		
 			# - Check if correctly detected
 			if index_best!=-1:
