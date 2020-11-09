@@ -36,7 +36,7 @@ from astropy.modeling.parameters import Parameter
 from astropy.modeling.core import Fittable2DModel
 from astropy import wcs
 from astropy import units as u
-from astropy.visualization import ZScaleInterval
+from astropy.visualization import ZScaleInterval, ContrastBiasStretch
 
 # URL from which to download the latest COCO trained weights
 COCO_MODEL_URL = "https://github.com/matterport/Mask_RCNN/releases/download/v2.0/mask_rcnn_coco.h5"
@@ -986,9 +986,15 @@ def read_table(filename):
     t= ascii.read(filename)
     return t
 
-def read_fits(filename, stretch=True, normalize=True, convertToRGB=True):
+def read_fits(filename, stretch=True, normalize=True, convertToRGB=True, zscale_contrasts=[0.25,0.25,0.25], to_uint8=True, stretch_biascontrast=False, contrast=1, bias=0.5):
     """ Read FITS image """
 	
+		# - Check contrasts
+    zscale_contrasts_default= [0.25,0.25,0.25]
+    if len(zscale_contrasts)!=3:
+        logger.warn("Size of input zscale_contrasts is !=3, ignoring inputs and using default (0.25,0.25,0.25)...")
+        zscale_contrasts= zscale_contrasts_default
+
     # - Open file
     try:
         hdu = fits.open(filename, memmap=False)
@@ -1023,26 +1029,76 @@ def read_fits(filename, stretch=True, normalize=True, convertToRGB=True):
     # - Replace nan values with min pix value
     img_min = np.nanmin(output_data)
     output_data[np.isnan(output_data)] = img_min
+    output_data_ch1= np.copy(output_data)
+    output_data_ch2= np.copy(output_data)
+    output_data_ch3= np.copy(output_data)
 
-    # - Stretch data using zscale transform
+    # - Stretch data using zscale transform?
     if stretch:
-        data_stretched = stretch_img(output_data)
-        output_data = data_stretched
-        output_data = output_data.astype(np.float32)
+        #data_stretched = stretch_img(output_data)
+        #output_data = data_stretched
+        #output_data = output_data.astype(np.float32)
+        data_stretched_ch1 = stretch_img(output_data_ch1, zscale_contrasts[0])
+        output_data_ch1 = data_stretched_ch1
+        output_data_ch1 = output_data_ch1.astype(np.float32)
 
-    # - Normalize data to [0,255]
+        data_stretched_ch2 = stretch_img(output_data_ch2, zscale_contrasts[1])
+        output_data_ch2 = data_stretched_ch2
+        output_data_ch2 = output_data_ch2.astype(np.float32)
+
+        data_stretched_ch3 = stretch_img(output_data_ch3, zscale_contrasts[2])
+        output_data_ch3 = data_stretched_ch3
+        output_data_ch3 = output_data_ch3.astype(np.float32)
+
+    # - Stretch data using bias-contrast transform
+    if stretch_biascontrast:
+        data_stretched_ch1 = stretch_img_biasconstrast(output_data_ch1, contrast, bias)
+        output_data_ch1 = data_stretched_ch1
+        output_data_ch1 = output_data_ch1.astype(np.float32)
+
+        data_stretched_ch2 = stretch_img_biasconstrast(output_data_ch2, contrast, bias)
+        output_data_ch2 = data_stretched_ch2
+        output_data_ch2 = output_data_ch2.astype(np.float32)
+
+        data_stretched_ch3 = stretch_img_biasconstrast(output_data_ch3, contrast, bias)
+        output_data_ch3 = data_stretched_ch3
+        output_data_ch3 = output_data_ch3.astype(np.float32)
+
+    # - Normalize data to [0,1]?
     if normalize:
-        data_norm = normalize_img(output_data)
-        output_data = data_norm
-        output_data = output_data.astype(np.float32)
+        #data_norm = normalize_img(output_data)
+        #output_data = data_norm
+        #output_data = output_data.astype(np.float32)
+        data_norm_ch1 = normalize_img(output_data_ch1)
+        output_data_ch1 = data_norm_ch1
+        output_data_ch1 = output_data_ch1.astype(np.float32)
 
-    # - Convert to RGB image
+        data_norm_ch2 = normalize_img(output_data_ch2)
+        output_data_ch2 = data_norm_ch2
+        output_data_ch2 = output_data_ch2.astype(np.float32)
+
+        data_norm_ch3 = normalize_img(output_data_ch3)
+        output_data_ch3 = data_norm_ch3
+        output_data_ch3 = output_data_ch3.astype(np.float32)
+
+    # - Convert to RGB image?
     if convertToRGB:
         if not normalize:
-            data_norm = normalize_img(output_data)
-            output_data = data_norm
-        data_rgb = gray2rgb(output_data)
+            #data_norm = normalize_img(output_data)
+            #output_data = data_norm
+            data_norm_ch1 = normalize_img(output_data_ch1)
+            output_data_ch1 = data_norm_ch1
+            data_norm_ch2 = normalize_img(output_data_ch2)
+            output_data_ch2 = data_norm_ch2
+            data_norm_ch3 = normalize_img(output_data_ch3)
+            output_data_ch3 = data_norm_ch3
+
+        #data_rgb = gray2rgb(output_data)
+        data_rgb= gray2rgb([output_data_ch1, output_data_ch2, output_data_ch3], to_uint8)
+
         output_data = data_rgb
+    else:
+        output_data= output_data_ch1
 
     return output_data, header
 	
@@ -1055,6 +1111,14 @@ def stretch_img(data, contrast=0.25):
 	
     return data_stretched
 
+def stretch_img_biasconstrast(data, contrast=1, bias=0.5):
+    """ Apply bias-contrast stretch to image """
+
+    transform= ContrastBiasStretch(contrast=contrast, bias=bias)
+    data_stretched= transform(data)
+
+    return data_stretched
+
 def normalize_img(data):
     """ Normalize image to (0,1) """
 	
@@ -1063,16 +1127,26 @@ def normalize_img(data):
 
     return data_norm
 
-def gray2rgb(data_float):
+def gray2rgb(data_float, to_uint8=True):
     """ Convert gray image data to rgb """
 
-    # - Convert to uint8
-    data_uint8 = np.array((data_float*255).round(), dtype=np.uint8)
-	
-    # - Convert to uint8 3D
-    data3_uint8 = np.stack((data_uint8,)*3, axis=-1)
+    # - Scale ot [0,255], convert to uint8 if required
+    if to_uint8:
+        #data = np.array((data_float*255).round(), dtype=np.uint8)
+        data_ch1 = np.array((data_float[0]*255).round(), dtype=np.uint8)
+        data_ch2 = np.array((data_float[1]*255).round(), dtype=np.uint8)
+        data_ch3 = np.array((data_float[2]*255).round(), dtype=np.uint8)
+    else:
+        data_ch1 = np.array(data_float[0]*255, dtype=np.float32)
+        data_ch2 = np.array(data_float[1]*255, dtype=np.float32)
+        data_ch3 = np.array(data_float[2]*255, dtype=np.float32)
 
-    return data3_uint8
+    # - Convert to 3D
+    #data3 = np.stack((data,)*3, axis=-1)
+    data3 = np.stack((data_ch1, data_ch2, data_ch3), axis=-1)
+
+    return data3
+
 
 def crop_img(data, x0, y0, dx, dy, stretch=False, normalize=False, convertToRGB=False):
     """ Extract sub image of size (dx,dy) around pixel (x0,y0) """
