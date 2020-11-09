@@ -71,5 +71,5 @@ setup(
 	data_files=[("data",["data/galaxy0002.fits", "data/sidelobe0001.fits"])],
 	include_package_data=True,
 	install_requires=reqs,
-	scripts=['scripts/run.py','scripts/train_all.py','scripts/train_all_gpu.py','scripts/sclassifier.py','scripts/run_mrcnn.sh'],
+	scripts=['scripts/run.py','scripts/train_all.py','scripts/train_all_gpu.py','scripts/sclassifier.py','scripts/run_mrcnn.sh','scripts/draw_img.py'],
 )
