@@ -202,7 +202,12 @@ class SourceDataset(utils.Dataset):
 		self.nclasses= 0
 		self.loaded_imgs= 0
 		self.convert_to_rgb= True
-		
+		self.apply_zscale= True
+		self.zscale_contrasts= [0.25,0.25,0.25]
+		self.convert_to_uint8= True
+		self.apply_biascontrast= False
+		self.bias= 0.5
+		self.contrast= 1	
 		
 	# ================================================================
 	# ==   INIT
@@ -605,9 +610,19 @@ class SourceDataset(utils.Dataset):
 		# - Load image
 		#logger.info("self.convert_to_rgb=%d" % self.convert_to_rgb)
 		filename= self.image_info[image_id]['path']
-		image, header= utils.read_fits(filename,stretch=True,normalize=True,convertToRGB=self.convert_to_rgb)
+		image, header= utils.read_fits(
+			filename, 
+			stretch=self.apply_zscale, 
+			zscale_contrasts=self.zscale_contrasts,
+			normalize=True, 
+			convertToRGB=self.convert_to_rgb, 
+			to_uint8= self.convert_to_uint8,
+			stretch_biascontrast=self.apply_biascontrast,
+			bias=self.bias,
+			contrast=self.contrast	
+		)
 		#image, header= utils.read_fits(filename,stretch=True,normalize=True,convertToRGB=True)
-				
+		
 		return image
 
 	# ================================================================
@@ -714,6 +729,8 @@ def create_train_val_datasets(args, train_filename='train.dat', crossval_filenam
 		convert_to_rgb= True
 
 	crossval_size= args.validation_data_fract
+	zscale_contrasts= [float(x) for x in args.zscale_contrasts.split(',')]
+
 
 	# - Create train/val filelists if not passed as program arguments
 	has_train_val_datalist= (args.datalist_train and args.datalist_train!="" and args.datalist_val and args.datalist_val!="")
@@ -746,10 +763,22 @@ def create_train_val_datasets(args, train_filename='train.dat', crossval_filenam
 	dataset_train = SourceDataset()
 	dataset_train.set_class_dict(args.classdict)
 	dataset_train.convert_to_rgb= convert_to_rgb
+	dataset_train.apply_zscale= args.zscale
+	dataset_train.zscale_contrasts= zscale_contrasts
+	dataset_train.convert_to_uint8= args.to_uint8
+	dataset_train.apply_biascontrast= args.biascontrast 
+	dataset_train.bias= args.bias
+	dataset_train.contrast= args.contrast	
 
 	dataset_val = SourceDataset()
 	dataset_val.set_class_dict(args.classdict)
 	dataset_val.convert_to_rgb= convert_to_rgb
+	dataset_val.apply_zscale= args.zscale
+	dataset_val.zscale_contrasts= zscale_contrasts
+	dataset_val.convert_to_uint8= args.to_uint8
+	dataset_val.apply_biascontrast= args.biascontrast 
+	dataset_val.bias= args.bias
+	dataset_val.contrast= args.contrast	
 
 	if args.dataloader=='datalist':
 		logger.info("Loading train dataset ...")
@@ -803,10 +832,19 @@ def create_test_dataset(args):
 			logger.error("Failed to convert classid remap dict string to dict!")
 			return None	
 
+	zscale_contrasts= [float(x) for x in args.zscale_contrasts.split(',')]
+
+
 	# - Create the dataset
 	dataset = SourceDataset()
 	dataset.set_class_dict(args.classdict)
 	dataset.convert_to_rgb= convert_to_rgb
+	dataset.apply_zscale= args.zscale
+	dataset.zscale_contrasts= zscale_contrasts
+	dataset.convert_to_uint8= args.to_uint8
+	dataset.apply_biascontrast= args.biascontrast 
+	dataset.bias= args.bias
+	dataset.contrast= args.contrast	
 
 	if args.dataloader=='datalist':
 		if dataset.load_data_from_list(args.datalist, args.maxnimgs)<0:
@@ -860,11 +898,22 @@ def train(args, model, config, datasets):
 
 	# - Define image augmentation
 	#   http://imgaug.readthedocs.io/en/latest/source/augmenters.html
-	augmentation = iaa.SomeOf((0, 2), 
+	#augmentation = iaa.SomeOf((0, 2), 
+	#	[
+	#		iaa.Fliplr(1.0),
+	#		iaa.Flipud(1.0),
+	#		iaa.OneOf([iaa.Affine(rotate=90),iaa.Affine(rotate=180),iaa.Affine(rotate=270)])
+	#	]
+	#)
+	
+	naugmenters_applied= 2
+	augmentation= iaa.SomeOf((0,naugmenters_applied),
 		[
-			iaa.Fliplr(1.0),
-			iaa.Flipud(1.0),
-			iaa.OneOf([iaa.Affine(rotate=90),iaa.Affine(rotate=180),iaa.Affine(rotate=270)])
+  		iaa.Fliplr(1.0),
+    	iaa.Flipud(1.0),
+    	iaa.Affine(rotate=(-90, 90), mode='constant', cval=0.0),
+			#iaa.Affine(scale=(0.5, 1.5), mode='constant', cval=0.0),
+			iaa.Affine(translate_percent={"x": (-0.3, 0.3), "y": (-0.3, 0.3)}, mode='constant', cval=0.0)
 		]
 	)
 
@@ -881,77 +930,7 @@ def train(args, model, config, datasets):
 
 	return 0
 
-def train_old(args,model,config):
-	"""Train the model."""
-	
-	# - Set options
-	nepochs= args.nepochs
-	nthreads= args.nthreads 
-	if args.grayimg:
-		convert_to_rgb= False
-	else:
-		convert_to_rgb= True
 
-	# - Load training/validation dataset
-	logger.info("Loading train & validation dataset ...")
-	dataset_train = SourceDataset()
-	dataset_train.set_class_dict(args.classdict)
-	dataset_train.convert_to_rgb= convert_to_rgb
-
-	dataset_val = SourceDataset()
-	dataset_val.set_class_dict(args.classdict)
-	dataset_val.convert_to_rgb= convert_to_rgb
-
-	if args.dataloader=='datalist':
-		if dataset_train.load_data_from_list(args.datalist, args.maxnimgs)<0:
-			logger.error("Failed to load train dataset (see logs)...")
-			return -1
-		if dataset_val.load_data_from_list(args.datalist, args.maxnimgs)<0:
-			logger.error("Failed to load validation dataset (see logs)...")
-			return -1
-	elif args.dataloader=='datalist_json':
-		if dataset_train.load_data_from_json_list(args.datalist, args.maxnimgs)<0:
-			logger.error("Failed to load train dataset (see logs)...")
-			return -1
-		if dataset_val.load_data_from_json_list(args.datalist, args.maxnimgs)<0:
-			logger.error("Failed to load validation dataset (see logs)...")
-			return -1
-	elif args.dataloader=='datadir':
-		if dataset_train.load_data_from_json_search(args.datadir, args.maxnimgs)<0:
-			logger.error("Failed to load train dataset (see logs)...")
-			return -1
-		if dataset_val.load_data_from_json_search(args.datadir, args.maxnimgs)<0:
-			logger.error("Failed to load validation dataset (see logs)...")
-			return -1
-	else:
-		logger.error("Invalid/unknown dataloader (%s) for training!" % args.dataloader)
-		return -1
-
-	dataset_train.prepare()
-	dataset_val.prepare()
-
-	# - Image augmentation
-	#   http://imgaug.readthedocs.io/en/latest/source/augmenters.html
-	augmentation = iaa.SomeOf((0, 2), 
-		[
-			iaa.Fliplr(1.0),
-			iaa.Flipud(1.0),
-			iaa.OneOf([iaa.Affine(rotate=90),iaa.Affine(rotate=180),iaa.Affine(rotate=270)])
-		]
-	)
-
-	# - Start train
-	logger.info("Start training ...")
-	model.train(dataset_train, dataset_val,	
-		learning_rate=config.LEARNING_RATE,
-		epochs=nepochs,
-		augmentation=augmentation,
-		#layers='heads',
-		layers='all',
-		n_worker_threads=nthreads
-	)
-
-	return 0
 
 ############################################################
 #        TEST
@@ -992,57 +971,6 @@ def test(args, model, config, dataset):
 
 	return 0
 
-def test_old(args,model,config):
-	""" Test the model on input dataset with ground truth knowledge """  
-
-	# - Set options
-	if args.grayimg:
-		convert_to_rgb= False
-	else:
-		convert_to_rgb= True
-
-	classid_remap_dict= {}
-	if args.remap_classids:
-		try:
-			classid_remap_dict= ast.literal_eval(args.classid_remap_dict)
-		except:
-			logger.error("Failed to convert classid remap dict string to dict!")
-			return -1	
-
-	# - Create the dataset
-	dataset = SourceDataset()
-	dataset.set_class_dict(args.classdict)
-	dataset.convert_to_rgb= convert_to_rgb
-
-	if args.dataloader=='datalist':
-		if dataset.load_data_from_list(args.datalist, args.maxnimgs)<0:
-			logger.error("Failed to load test dataset (see logs)...")
-			return -1
-	elif args.dataloader=='datalist_json':
-		if dataset.load_data_from_json_list(args.datalist, args.maxnimgs)<0:
-			logger.error("Failed to load test dataset (see logs)...")
-			return -1
-	elif args.dataloader=='datadir':
-		if dataset.load_data_from_json_search(args.datadir, args.maxnimgs)<0:
-			logger.error("Failed to load test dataset (see logs)...")
-			return -1
-	else:
-		logger.error("Invalid/unknown dataloader (%s) for testing!" % args.dataloader)
-		return -1
-
-	dataset.prepare()
-
-	# - Test model on dataset
-	tester= ModelTester(model,config,dataset)	
-	tester.score_thr= args.scoreThr
-	tester.iou_thr= args.iouThr
-	tester.n_max_img= args.maxnimgs
-	tester.remap_classids= args.remap_classids 
-	tester.classid_map= classid_remap_dict
-
-	tester.test()
-
-	return 0
 
 ############################################################
 #        DETECT
@@ -1054,9 +982,21 @@ def detect(args, model, config):
 	if args.grayimg:
 		convert_to_rgb= False
 	else:
-		convert_to_rgb= True		
+		convert_to_rgb= True	
 
-	image_data, header= utils.read_fits(args.image,stretch=True,normalize=True,convertToRGB=convert_to_rgb)
+	zscale_contrasts= [float(x) for x in args.zscale_contrasts.split(',')]
+
+	image_data, header= utils.read_fits(
+		args.image,
+		stretch=args.zscale,
+		zscale_contrasts= zscale_contrasts,
+		normalize=True,
+		convertToRGB=convert_to_rgb,
+		to_uint8=args.to_uint8,
+		stretch_biascontrast=args.biascontrast,
+		bias=args.bias,
+		contrast=args.contrast
+	)
 	img_fullpath= os.path.abspath(args.image)
 	img_path_base= os.path.basename(img_fullpath)
 	img_path_base_noext= os.path.splitext(img_path_base)[0]
@@ -1117,6 +1057,17 @@ def parse_args():
 	# - COMMON OPTIONS
 	parser.add_argument('--grayimg', dest='grayimg', action='store_true')	
 	parser.set_defaults(grayimg=False)
+	parser.add_argument('--no_uint8', dest='to_uint8', action='store_false')	
+	parser.set_defaults(to_uint8=True)
+	parser.add_argument('--no_zscale', dest='zscale', action='store_false')	
+	parser.set_defaults(zscale=True)
+	parser.add_argument('--zscale_contrasts', dest='zscale_contrasts', required=False, type=str, default='0.25,0.25,0.25',help='zscale contrasts applied to all channels') 
+	parser.add_argument('--biascontrast', dest='biascontrast', action='store_true')	
+	parser.set_defaults(biascontrast=False)
+	parser.add_argument('--bias', dest='bias', required=False, type=float, default=0.5,help='Bias value (default=0.5)') 
+	parser.add_argument('--contrast', dest='contrast', required=False, type=float, default=1.0,help='Contrast value (default=1)') 
+	
+
 	parser.add_argument('--classdict', dest='classdict', required=False, type=str, default='{"sidelobe":1,"source":2,"galaxy":3}',help='Class id dictionary used when loading dataset') 
 	parser.add_argument('--classdict_model', dest='classdict_model', required=False, type=str, default='',help='Class id dictionary used for the model (if empty, it is set equal to classdict)')
 	parser.add_argument('--remap_classids', dest='remap_classids', action='store_true')	
