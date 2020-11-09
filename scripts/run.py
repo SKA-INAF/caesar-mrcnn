@@ -914,7 +914,8 @@ def train(args, model, config, datasets):
     	iaa.Affine(rotate=(-90, 90), mode='constant', cval=0.0),
 			#iaa.Affine(scale=(0.5, 1.5), mode='constant', cval=0.0),
 			iaa.Affine(translate_percent={"x": (-0.3, 0.3), "y": (-0.3, 0.3)}, mode='constant', cval=0.0)
-		]
+		],
+		random_order=True
 	)
 
 	# - Start train
