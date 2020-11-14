@@ -26,6 +26,20 @@ To use package scripts:
 * Add binary directory to your ```PATH``` environment variable:   
   ``` export PATH=$PATH:$INSTALL_DIR/bin ```    
 
-## **How to run?**  
+## **Usage**  
+
+mrcnn can be run in different modes:   
+
+* To train a model: ```python3.6 $INSTALL_DIR/bin/run.py [OPTIONS] train```      
+* To test a model: ```python3.6 $INSTALL_DIR/bin/run.py [OPTIONS] test```    
+* To detect objects on new data: ```python3.6 $INSTALL_DIR/bin/run.py [OPTIONS] detect```    
+* To classify pre-detected objects: ```python3.6 $INSTALL_DIR/bin/run.py [OPTIONS] classify```  (TO BE IMPLEMENTED)    
+
+Supported options are:  
+
+- OPT1   
+- OPT2    
+- ...   
+- OPTN   
 
 
