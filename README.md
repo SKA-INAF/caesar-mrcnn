@@ -48,5 +48,8 @@ Supported options are:
 
 *DATA LOADER*    
 
-* `--dataloader=[LOADER]`: Train/cross-val data loader type. Valid values: {datalist,datalist_json,datadir_json}. Default: datalist     
+* `--dataloader=[LOADER]`: Train/cross-val data loader type. Valid values: {datalist,datalist_json,datadir_json}. Default: datalist    
+* `--datalist=[FILENAME]`: Data filelist with format: `filename_img(.fits),filename_mask(.fits),label` (datalist loader) or `filename(.json)` (datalist_json loader)    
+* `--datalist_train=[FILENAME]`: Train data filelist with format: `filename_img(.fits),filename_mask(.fits),label` (datalist loader) or `filename(.json)` (datalist_json loader)    
+* `--datalist_val=[FILENAME]`: Cross-validation data filelist with format: `filename_img(.fits),filename_mask(.fits),label` (datalist loader) or `filename(.json)` (datalist_json loader)    
 
