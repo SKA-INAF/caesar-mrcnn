@@ -37,9 +37,16 @@ mrcnn can be run in different modes:
 
 Supported options are:  
 
-- OPT1   
-- OPT2    
-- ...   
-- OPTN   
+*IMAGE PRE-PROCESSING*     
+* `--grayimg`: To pass 1-channel gray-level images to input layer. Default: pass 3-channels RGB images    
+* `--no_uint8`: To disable conversion from image float values to uint8. Default: convert to uint8       
+* `--no_zscale`: To disable astropy zscale transform applied to input images. Default: apply   
+* `--zscale_contrasts=[CONTRASTS]`: zscale contrast values in range [0,1] for the three RGB channels, in string format separated by commas. Default: 0.25,0.25,0.25    
+* `--biascontrast`: To apply astropy BiasContrast transform to input images. Default: not applied    
+* `--bias=[BIAS]`: Bias parameter value of BiasContrast transform. Default: 0.5   
+* `--contrast=[CONTRAST]`: Contrast parameter value of BiasContrast transform. Default: 1   
 
+*DATA LOADER*    
+
+* `--dataloader=[LOADER]`: Train/cross-val data loader type. Valid values: {datalist,datalist_json,datadir_json}. Default: datalist     
 
