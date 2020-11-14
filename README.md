@@ -69,6 +69,12 @@ Supported options are:
 * `--logs=[PATH]`: Logs and checkpoints directory. Default: `logs/`   
 * `--nthreads=[N]`: Number of worker threads. Default: 1    
 
+*TRAIN OPTIONS*    
+     
+* `--ngpu=[N]`: Number of GPUs. Default: 1   
+* `--nimg_per_gpu=[N]`: Number of images per gpu. Default: 1   
+* `--nepochs=[N]`: Number of training epochs. Default: 1   
+
 
 
 
