@@ -60,9 +60,14 @@ Supported options are:
 * `--remap_classids`: Remap detected object class ids to ground truth object class ids. Default: False   
 * `--classid_remap_dict=[DICT]`: Dictionary in string format used to remap detected object class ids to ground truth object class ids. Default: empty   
 
-*COMMON/RUN OPTIONS*  
+*MODEL OPTIONS*   
 
 * `--weights=[FILENAME]`: Path to weights .h5 file. If empty, initialize model with random weights. Default: empty    
+
+*RUN OPTIONS*  
+
+* `--logs=[PATH]`: Logs and checkpoints directory. Default: `logs/`   
+* `--nthreads=[N]`: Number of worker threads. Default: 1    
 
 
 
