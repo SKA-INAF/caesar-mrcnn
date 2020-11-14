@@ -51,5 +51,20 @@ Supported options are:
 * `--dataloader=[LOADER]`: Train/cross-val data loader type. Valid values: {datalist,datalist_json,datadir_json}. Default: datalist    
 * `--datalist=[FILENAME]`: Data filelist with format: `filename_img(.fits),filename_mask(.fits),label` (datalist loader) or `filename(.json)` (datalist_json loader)    
 * `--datalist_train=[FILENAME]`: Train data filelist with format: `filename_img(.fits),filename_mask(.fits),label` (datalist loader) or `filename(.json)` (datalist_json loader)    
-* `--datalist_val=[FILENAME]`: Cross-validation data filelist with format: `filename_img(.fits),filename_mask(.fits),label` (datalist loader) or `filename(.json)` (datalist_json loader)    
+* `--datalist_val=[FILENAME]`: Cross-validation data filelist with format: `filename_img(.fits),filename_mask(.fits),label` (datalist loader) or `filename(.json)` (datalist_json loader)   
+* `--datadir=[PATH]`: Data top directory traversed recursively to search for json dataset files  
+* `--validation_data_fract=[FRACTION]`: Fraction of input data used for cross-validation. Default: 0.1    
+* `--maxnimgs=[VALUE]`: Max number of images to consider in dataset (-1=all). Default: -1    
+* `--classdict=[DICT]`: Class id dictionary in string format used when loading dataset. Default: `{"sidelobe":1,"source":2,"galaxy":3}`   
+* `--classdict_model=[DICT]`: Class id dictionary used for the model (if empty, it is set equal to classdict). Default: empty    
+* `--remap_classids`: Remap detected object class ids to ground truth object class ids. Default: False   
+* `--classid_remap_dict=[DICT]`: Dictionary in string format used to remap detected object class ids to ground truth object class ids. Default: empty   
+
+*COMMON/RUN OPTIONS*  
+
+* `--weights=[FILENAME]`: Path to weights .h5 file. If empty, initialize model with random weights. Default: empty    
+
+
+
+
 
