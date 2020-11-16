@@ -1398,6 +1398,7 @@ def main():
 	config.USE_LOSSES= use_loss_dict
 	config.IMAGE_MIN_DIM= args.imgsize
 	config.IMAGE_MAX_DIM= args.imgsize
+	config.IMAGE_SHAPE = np.array([config.IMAGE_MAX_DIM, config.IMAGE_MAX_DIM,config.IMAGE_CHANNEL_COUNT])
 
 	config.display()
 
