@@ -1056,6 +1056,7 @@ def parse_args():
 	parser.add_argument("command",metavar="<command>",help="'train' or 'test'")
 
 	# - COMMON OPTIONS
+	parser.add_argument('--imgsize', dest='imgsize', required=False, type=int, default=256,help='Size in pixel used to resize input image (default=256)') 
 	parser.add_argument('--grayimg', dest='grayimg', action='store_true')	
 	parser.set_defaults(grayimg=False)
 	parser.add_argument('--no_uint8', dest='to_uint8', action='store_false')	
@@ -1075,7 +1076,7 @@ def parse_args():
 	parser.set_defaults(remap_classids=False)
 	parser.add_argument('--classid_remap_dict', dest='classid_remap_dict', required=False, type=str, default='',help='Dictionary used to remap detected classid to gt classid')
  
-	parser.add_argument('--dataloader',required=False,metavar="Data loader type",type=str,default='filelist',help='Train/cross-val data loader type {datalist,datalist_json,datadir_json}')
+	parser.add_argument('--dataloader',required=False,metavar="Data loader type",type=str,default='datalist',help='Train/cross-val data loader type {datalist,datalist_json,datadir_json}')
 	parser.add_argument('--datalist', required=False,metavar="/path/to/dataset",help='Train/test data filelist with format: filename_img,filename_mask,label or: filename_json')
 	parser.add_argument('--datalist_train', required=False,metavar="/path/to/train_dataset", default=None, help='Train data filelist with format: filename_img,filename_mask,label or: filename_json')
 	parser.add_argument('--datalist_val', required=False,metavar="/path/to/val_dataset", default=None, help='Cross-val data filelist with format: filename_img,filename_mask,label or: filename_json')
@@ -1395,6 +1396,8 @@ def main():
 	config.RPN_ANCHOR_RATIOS= rpn_anchor_ratios
 	config.LOSS_WEIGHTS= loss_weight_dict
 	config.USE_LOSSES= use_loss_dict
+	config.IMAGE_MIN_DIM= args.imgsize
+	config.IMAGE_MAX_DIM= args.imgsize
 
 	config.display()
 
