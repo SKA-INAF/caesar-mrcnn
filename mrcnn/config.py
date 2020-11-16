@@ -218,6 +218,9 @@ class Config(object):
     # Gradient norm clipping
     GRADIENT_CLIP_NORM = 5.0
 
+    # Loss function to use for mask loss. Accepted values are: binary_crossentropy and dice_coef_loss
+    MASK_LOSS_FUNCTION = 'binary_crossentropy'
+
     def __init__(self):
         """Set values of computed attributes."""
         # Effective batch size

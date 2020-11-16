@@ -1127,6 +1127,8 @@ def parse_args():
 	parser.add_argument('--no_mrcnn_mask_loss', dest='mrcnn_mask_loss', action='store_false')
 	parser.set_defaults(mrcnn_mask_loss=True)
 
+	parser.add_argument('--mask_loss_function', dest='mask_loss_function', required=False, type=str, default='binary_crossentropy', choices=['binary_crossentropy', 'dice_coef_loss'], help="Which loss function to use for mask loss. Accepted values are: binary_crossentropy and dice_coef_loss")
+
 	# - TEST OPTIONS
 	parser.add_argument('--scoreThr', required=False,default=0.7,type=float,metavar="Object detection score threshold to be used during test",help="Object detection score threshold to be used during test")
 	parser.add_argument('--iouThr', required=False,default=0.6,type=float,metavar="IOU threshold used to match detected objects with true objects",help="IOU threshold used to match detected objects with true objects")
@@ -1303,6 +1305,8 @@ def main():
 	if not args.mrcnn_mask_loss:
 		use_loss_dict['mrcnn_mask_loss']= False
 
+	mask_loss_function = args.mask_loss_function
+
 	#===========================
 	#==   LOAD DATASETS
 	#===========================
@@ -1356,6 +1360,7 @@ def main():
 		#config.STEPS_PER_EPOCH = ((args.epoch_length - args.nvalidation_steps) // (config.IMAGES_PER_GPU*config.GPU_COUNT)) #16439 total images
 		config.VALIDATION_STEPS= validation_steps_per_epoch
 		config.STEPS_PER_EPOCH= steps_per_epoch
+		config.MASK_LOSS_FUNCTION = mask_loss_function
 		
 	elif args.command == "test":
 		class InferenceConfig(SDetectorConfig):

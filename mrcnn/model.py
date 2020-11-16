@@ -1223,7 +1223,7 @@ def mrcnn_bbox_loss_graph(target_bbox, target_class_ids, pred_bbox):
     return loss
 
 
-def mrcnn_mask_loss_graph(target_masks, target_class_ids, pred_masks):
+def mrcnn_mask_loss_graph(target_masks, target_class_ids, pred_masks, mask_loss_function='binary_crossentropy'):
     """Mask binary cross-entropy loss for the masks head.
 
     target_masks: [batch, num_rois, height, width].
@@ -1255,9 +1255,14 @@ def mrcnn_mask_loss_graph(target_masks, target_class_ids, pred_masks):
 
     # Compute binary cross entropy. If no positive ROIs, then return 0.
     # shape: [batch, roi, num_classes]
-    loss = K.switch(tf.size(y_true) > 0,
-                    K.binary_crossentropy(target=y_true, output=y_pred),
-                    tf.constant(0.0))
+    if mask_loss_function == 'binary_crossentropy':
+        loss = K.switch(tf.size(y_true) > 0,
+                        K.binary_crossentropy(target=y_true, output=y_pred),
+                        tf.constant(0.0))
+    elif mask_loss_function == 'dice_coef_loss':
+        loss = K.switch(tf.size(y_true) > 0,
+                        dice_coef_loss(y_true, y_pred),
+                        tf.constant(0.0))
     loss = K.mean(loss)
     return loss
 
@@ -2108,7 +2113,8 @@ class MaskRCNN():
                 [target_class_ids, mrcnn_class_logits, active_class_ids])
             bbox_loss = KL.Lambda(lambda x: mrcnn_bbox_loss_graph(*x), name="mrcnn_bbox_loss")(
                 [target_bbox, target_class_ids, mrcnn_bbox])
-            mask_loss = KL.Lambda(lambda x: mrcnn_mask_loss_graph(*x), name="mrcnn_mask_loss")(
+            mask_loss_function: str = config.MASK_LOSS_FUNCTION
+            mask_loss = KL.Lambda(lambda x: mrcnn_mask_loss_graph(*x, mask_loss_function), name="mrcnn_mask_loss")(
                 [target_mask, target_class_ids, mrcnn_mask])
 
             # Model
@@ -2987,3 +2993,15 @@ def denorm_boxes_graph(boxes, shape):
     scale = tf.concat([h, w, h, w], axis=-1) - tf.constant(1.0)
     shift = tf.constant([0., 0., 1., 1.])
     return tf.cast(tf.round(tf.multiply(boxes, scale) + shift), tf.int32)
+
+smooth = 1e-7
+
+def dice_coef(y_true, y_pred):
+    y_true_f = K.flatten(y_true)
+    y_pred_f = K.flatten(y_pred)
+    intersection = K.sum(y_true_f * y_pred_f)
+    return (2. * intersection + smooth) / (K.sum(y_true_f) + K.sum(y_pred_f) + smooth)
+
+
+def dice_coef_loss(y_true, y_pred):
+    return 1-dice_coef(y_true, y_pred)
