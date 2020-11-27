@@ -1152,22 +1152,23 @@ def validate_args(args):
 		return -1
 
 	# - Check data loaders
-	if args.dataloader=='datalist' or args.dataloader=='datalist_json':
-		has_datalist= (args.datalist and args.datalist!="")
-		has_train_val_datalist= (args.datalist_train and args.datalist_train!="" and args.datalist_val and args.datalist_val!="")
-		if not has_datalist:
-			if not has_train_val_datalist:
-				logger.error("Argument --datalist (or alternatively --datalist_train, --datalist_val) is required for training with datalist data loader!")
+	if args.command == "train" or args.command == "test":
+		if args.dataloader=='datalist' or args.dataloader=='datalist_json':
+			has_datalist= (args.datalist and args.datalist!="")
+			has_train_val_datalist= (args.datalist_train and args.datalist_train!="" and args.datalist_val and args.datalist_val!="")
+			if not has_datalist:
+				if not has_train_val_datalist:
+					logger.error("Argument --datalist (or alternatively --datalist_train, --datalist_val) is required for training with datalist data loader!")
+					return -1
+		elif args.dataloader=='datadir_json':
+			has_datadir= (args.datadir and args.datadir!="")
+			dir_exist= os.path.isdir(args.datadir)
+			if not has_datadir:
+				logger.error("Argument --datadir is required for training with datadir data loader!")
 				return -1
-	elif args.dataloader=='datadir_json':
-		has_datadir= (args.datadir and args.datadir!="")
-		dir_exist= os.path.isdir(args.datadir)
-		if not has_datadir:
-			logger.error("Argument --datadir is required for training with datadir data loader!")
-			return -1
-		if not dir_exist:
-			logger.error("Datadir argument must be a directory existing on filesystem!")
-			return -1
+			if not dir_exist:
+				logger.error("Datadir argument must be a directory existing on filesystem!")
+				return -1
 
 	# - Check image arg
 	if args.command=='detect':
