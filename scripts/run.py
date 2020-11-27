@@ -990,7 +990,7 @@ def detect(args, model, config):
 	image_data, header= utils.read_fits(
 		args.image,
 		stretch=args.zscale,
-		zscale_contrasts= zscale_contrasts,
+		zscale_contrasts=zscale_contrasts,
 		normalize=True,
 		convertToRGB=convert_to_rgb,
 		to_uint8=args.to_uint8,
