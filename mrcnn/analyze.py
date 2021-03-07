@@ -82,49 +82,56 @@ class ModelTester(object):
 	def test(self):
 		""" Test the model on input dataset """    
 	
-		# # - Loop over dataset and inspect results
-		# nimg= 0
-		# logger.info("Processing up to %d images " % (self.n_max_img))
-		#
-		# for index, image_id in enumerate(self.dataset.image_ids):
-		#
-		# 	# - Check if stop inspection
-		# 	if self.n_max_img>0 and nimg>=self.n_max_img:
-		# 		logger.info("Max number of images to inspect reached, stop here.")
-		# 		break
-		#
-		# 	nimg+= 1
-		#
-		# 	# - Inspect results	for current image
-		# 	image_path = self.dataset.image_info[index]['path']
-		# 	image_path_base= os.path.basename(image_path)
-		#
-		# 	# - Initialize the analyzer
-		# 	analyzer= Analyzer(self.model,self.config,self.dataset)
-		# 	analyzer.score_thr= self.score_thr
-		# 	analyzer.iou_thr= self.iou_thr
-		# 	analyzer.remap_classids= self.remap_classids
-		# 	analyzer.classid_map= self.classid_map
-		#
-		# 	# - Inspecting results
-		# 	logger.info("Inspecting results for image %s ..." % image_path_base)
-		# 	status= analyzer.inspect_results(image_id,image_path)
-		# 	if status<0:
-		# 		logger.error("Failed to analyze results for image %s ..." % image_path_base)
-		# 		continue
-		#
-		# 	# - Update performances
-		# 	logger.info("Updating test performances using results for image %s ..." % image_path_base)
-		# 	self.update_performances(analyzer)
-		#
-		# # - Compute final results
-		# logger.info("Computing final performances ...")
-		# self.compute_performances()
-		# TODO ^ uncomment
+		# - Loop over dataset and inspect results
+		nimg= 0
+		logger.info("Processing up to %d images " % (self.n_max_img))
+
+		# two Lists which will store the groundtruth + prediction
+		# for each image, for the metrics
+		# TODO convert to attributes (self)
+		# The outer Lists will store a number of Lists, where each of the inner Lists will store the details of the objects in one image
+		# The objects found in each image are themselves stored as a List, storing the bounding box, the classification/label (and the score if it a prediction)
+		gt_data: List[List[List]] = []
+		pred_data: List[List[List]] = []
+
+		for index, image_id in enumerate(self.dataset.image_ids):
+
+			# - Check if stop inspection
+			if self.n_max_img>0 and nimg>=self.n_max_img:
+				logger.info("Max number of images to inspect reached, stop here.")
+				break
+
+			nimg+= 1
+
+			# - Inspect results	for current image
+			image_path = self.dataset.image_info[index]['path']
+			image_path_base= os.path.basename(image_path)
+
+			# - Initialize the analyzer
+			analyzer= Analyzer(self.model,self.config,self.dataset, gt_data, pred_data)
+			analyzer.score_thr= self.score_thr
+			analyzer.iou_thr= self.iou_thr
+			analyzer.remap_classids= self.remap_classids
+			analyzer.classid_map= self.classid_map
+
+			# - Inspecting results
+			logger.info("Inspecting results for image %s ..." % image_path_base)
+			status= analyzer.inspect_results(image_id,image_path)
+			if status<0:
+				logger.error("Failed to analyze results for image %s ..." % image_path_base)
+				continue
+
+			# - Update performances
+			logger.info("Updating test performances using results for image %s ..." % image_path_base)
+			self.update_performances(analyzer)
+
+		# - Compute final results
+		logger.info("Computing final performances ...")
+		self.compute_performances()
 
 		# - Compute Mean AveragePrecision (mAP)
 		logger.info("Computing Mean AveragePrecision (mAP) ...")
-		self.compute_mAP()
+		self.compute_mAP(gt_data=gt_data, pred_data=pred_data)
 
 		return 0
 
@@ -206,7 +213,7 @@ class ModelTester(object):
 		print("== DET IOUs ==")
 		print("iouThr=%f, <iou>=%f, sigma(iou)=%f" % (self.iou_thr,self.detobj_iouMean,self.detobj_iouStdDev))
 
-	def compute_mAP(self):
+	def compute_mAP(self, gt_data, pred_data):
 		# # Compute VOC-Style mAP @ IoU=0.5
 		# # Running on 10 images. Increase for better accuracy.
 		# image_ids = np.random.choice(dataset_val.image_ids, 10)
@@ -256,7 +263,7 @@ class ModelTester(object):
 		print("== Mean AveragePrecision (mAP) ==")
 		print("mAP=%f" % (self.mAP))
 
-		# https://github.com/rafaelpadilla/Object-Detection-Metrics
+		# ODM https://github.com/rafaelpadilla/Object-Detection-Metrics
 		import os
 		# create the file paths in case they don't already exist
 		gt_file_path = os.path.join('..',
@@ -268,148 +275,219 @@ class ModelTester(object):
 										   'detections')
 		os.makedirs(detection_file_path, exist_ok=True)
 
-		print(self.config.CLASS_NAMES)
-		image_ids = self.dataset.image_ids
-		for image_id in image_ids:
-			# Load image and ground truth data
-			image, image_meta, gt_class_id, gt_bbox, gt_mask = \
-				modellib.load_image_gt(self.dataset, self.config,
-									   image_id, use_mini_mask=False)
-			print(gt_class_id)
-			print(gt_bbox)
-
-			# TODO probably needs a for loop for each obejct in the gt
-			gt_class_id_t = gt_class_id[0]
-			gt_class_t = self.config.CLASS_NAMES[gt_class_id_t]
-			# or left top width height (needs diff command)
-			gt_bbox_t_left = gt_bbox[0][0]	#TODO make sure these are being interpreted correctly
-			gt_bbox_t_top = gt_bbox[0][1]
-			gt_bbox_t_right = gt_bbox[0][2]
-			gt_bbox_t_bottom = gt_bbox[0][3]
-
-			# TODO change w to a if it's a loop
-			import os
+		# TODO using the gt_data and pred_data lists
+		# TODO make sure if they are xywh or xyrb
+		for i, (gt_image, pred_image) in enumerate(zip(gt_data, pred_data)):
 			gt_file_name = os.path.join(gt_file_path,
-										str(image_id)+'.txt')
-			print(os.path.normpath(os.path.abspath(gt_file_name)))
+										str(i)+'.txt')
+			print(os.path.normpath(os.path.abspath(gt_file_name))) # TODO DEBUG
 			with open(gt_file_name, 'w+') as gt_file:
-				gt_file.write(gt_class_t + ' '
-							  + str(gt_bbox_t_left) + ' '
-							  + str(gt_bbox_t_top) + ' '
-							  + str(gt_bbox_t_right) + ' '
-							  + str(gt_bbox_t_bottom))
-
-			# detection
-			molded_images = np.expand_dims(modellib.mold_image(image, self.config), 0)
-			# Run object detection
-			results = self.model.detect([image], verbose=0)
-			r = results[0]
-
-			# print(r)
-			# TODO probably needs a for loop for each object detected
-			detections_str: List[str] = []
-			for i in range(len(r['rois'])):
-				# class id
-				detected_class_id_t: int = r['class_ids'][i]
-				detected_class_t: str = self.config.CLASS_NAMES[detected_class_id_t]
-				# score (confidence)
-				detected_score_t: float = r['scores'][i]
-				# or left top width height (needs diff command)
-				detected_bbox_t_left = r['rois'][i][0]
-				detected_bbox_t_top = r['rois'][i][1]
-				detected_bbox_t_right = r['rois'][i][2]
-				detected_bbox_t_bottom = r['rois'][i][3]
-
-				detection_str: str = detected_class_t + ' ' \
-									 + str(detected_score_t) + ' ' \
-									 + str(detected_bbox_t_left) + ' ' \
-									 + str(detected_bbox_t_top) + ' ' \
-									 + str(detected_bbox_t_right) + ' ' \
-									 + str(detected_bbox_t_bottom) + ' '
-				detections_str.append(detection_str)
+				for gt_object in gt_image:
+					# gt_file.write(' '.join(list(map(str, gt_object))) + '\n')
+					gt_str: str = gt_object[4] + ' '\
+								  + ' '.join(list(map(str, gt_object[0:3+1])))
+					gt_file.write(gt_str + '\n')
 
 			detection_file_name = os.path.join(detection_file_path,
-											   str(image_id) + '.txt')
+											   str(i)+'.txt')
 			with open(detection_file_name, 'w+') as detections_file:
-				for detection_str in detections_str:
-					detections_file.write(detection_str+'\n')
+				for pred_object in pred_image:
+					# detections_file.write(' '.join(list(map(str, pred_object))) + '\n')
+					pred_str: str = pred_object[4] + ' ' + str(pred_object[5]) + ' '\
+								  + ' '.join(list(map(str, pred_object[0:3+1])))
+					detections_file.write(pred_str + '\n')
 
 		# https://gist.github.com/tarlen5/008809c3decf19313de216b9208f3734
-		ground_truth_dict = {}
-		prediction_dict = {}
-		image_ids = self.dataset.image_ids
-		for image_id in image_ids:
-			# Load image and ground truth data
-			image, image_meta, gt_class_id, gt_bbox, gt_mask = \
-				modellib.load_image_gt(self.dataset, self.config,
-									   image_id, use_mini_mask=False)
-			print(gt_class_id)
-			print(gt_bbox)
+		gt_dict = {}
+		pred_dict = {}
 
-			# TODO probably needs a for loop for each obejct in the gt
-			gt_class_id_t = gt_class_id[0]
-			gt_class_t = self.config.CLASS_NAMES[gt_class_id_t]
-			# or left top width height (needs diff command)
-			gt_bbox_t_left = gt_bbox[0][0]
-			gt_bbox_t_top = gt_bbox[0][1]
-			gt_bbox_t_right = gt_bbox[0][2]
-			gt_bbox_t_bottom = gt_bbox[0][3]
-
-			if str(image_id) not in ground_truth_dict:
-				ground_truth_dict[str(image_id)] = [gt_bbox[0].tolist()]
-			else:
-				ground_truth_dict[str(image_id)].append([gt_bbox[0].tolist()])
-
-			# detection
-			molded_images = np.expand_dims(modellib.mold_image(image, self.config), 0)
-			# Run object detection
-			results = self.model.detect([image], verbose=0)
-			r = results[0]
-
-			detections_str: List[str] = []
-			for i in range(len(r['rois'])):
-				# class id
-				detected_class_id_t: int = r['class_ids'][i]
-				detected_class_t: str = self.config.CLASS_NAMES[detected_class_id_t]
-				# score (confidence)
-				detected_score_t: float = r['scores'][i]
-				# or left top width height (needs diff command)
-				detected_bbox_t_left = r['rois'][i][0]
-				detected_bbox_t_top = r['rois'][i][1]
-				detected_bbox_t_right = r['rois'][i][2]
-				detected_bbox_t_bottom = r['rois'][i][3]
-
-				# detection_str: str = detected_class_t + ' ' \
-				# 					 + str(detected_score_t) + ' ' \
-				# 					 + str(detected_bbox_t_left) + ' ' \
-				# 					 + str(detected_bbox_t_top) + ' ' \
-				# 					 + str(detected_bbox_t_right) + ' ' \
-				# 					 + str(detected_bbox_t_bottom) + ' '
-				# detections_str.append(detection_str)
-
-				if str(image_id) not in prediction_dict:
-					prediction_dict[str(image_id)] = {}
-					prediction_dict[str(image_id)]['boxes'] = [r['rois'][i].tolist()]
-					prediction_dict[str(image_id)]['scores'] = [r['scores'][i].tolist()]
+		for i, (gt_image, pred_image) in enumerate(zip(gt_data, pred_data)):
+			for gt_object in gt_image:
+				if str(i) not in gt_dict:
+					gt_dict[str(i)] = [gt_object[0:3+1]]
 				else:
-					prediction_dict[str(image_id)]['boxes'].append(r['rois'][i].tolist())
-					prediction_dict[str(image_id)]['scores'].append(r['scores'][i].tolist())
+					gt_dict[str(i)].append(gt_object[0:3+1])
+
+			# TODO if pred_image is empty, pred_dict[i] = boxes: [] scores: []
+			# TODO store class data
+			for pred_object in pred_image:
+				if str(i) not in pred_dict:
+					pred_dict[str(i)] = {}
+					# the first 4 elements are the bounding box
+					pred_dict[str(i)]['boxes'] = [pred_object[0:3+1]]
+					# the last element is the score/confidence
+					pred_dict[str(i)]['scores'] = [pred_object[5]]
+				else:
+					pred_dict[str(i)]['boxes'].append(pred_object[0:3+1])
+					pred_dict[str(i)]['scores'].append(pred_object[5])
+
+		print(gt_dict)
+		print(pred_dict)
 
 		import os
 		import json
+
 		gt_file_path = os.path.join('..',
 									'tarlen5-calculate-mean-ap')
 		os.makedirs(gt_file_path, exist_ok=True)
 		gt_file_name = os.path.join(gt_file_path, 'ground_truth_boxes.json')
 		with open(gt_file_name, 'w+') as gt_file:
-			json.dump(ground_truth_dict, gt_file)
+			json.dump(gt_dict, gt_file)
 
 		detection_file_path = os.path.join('..',
 										   'tarlen5-calculate-mean-ap')
 		os.makedirs(detection_file_path, exist_ok=True)
 		detection_file_name = os.path.join(detection_file_path, 'predicted_boxes.json')
 		with open(detection_file_name, 'w+') as detections_file:
-			json.dump(prediction_dict, detections_file)
+			json.dump(pred_dict, detections_file)
+
+
+		# TODO OLD CODE
+		# print(self.config.CLASS_NAMES)
+		# image_ids = self.dataset.image_ids
+		# for image_id in image_ids:
+		# 	# Load image and ground truth data
+		# 	image, image_meta, gt_class_id, gt_bbox, gt_mask = \
+		# 		modellib.load_image_gt(self.dataset, self.config,
+		# 							   image_id, use_mini_mask=False)
+		# 	print(gt_class_id)
+		# 	print(gt_bbox)
+		#
+		# 	# TODO probably needs a for loop for each obejct in the gt
+		# 	gt_class_id_t = gt_class_id[0]
+		# 	gt_class_t = self.config.CLASS_NAMES[gt_class_id_t]
+		# 	# or left top width height (needs diff command)
+		# 	gt_bbox_t_left = gt_bbox[0][0]	#TODO make sure these are being interpreted correctly
+		# 	gt_bbox_t_top = gt_bbox[0][1]
+		# 	gt_bbox_t_right = gt_bbox[0][2]
+		# 	gt_bbox_t_bottom = gt_bbox[0][3]
+		#
+		# 	# TODO change w to a if it's a loop
+		# 	import os
+		# 	gt_file_name = os.path.join(gt_file_path,
+		# 								str(image_id)+'.txt')
+		# 	print(os.path.normpath(os.path.abspath(gt_file_name)))
+		# 	with open(gt_file_name, 'w+') as gt_file:
+		# 		gt_file.write(gt_class_t + ' '
+		# 					  + str(gt_bbox_t_left) + ' '
+		# 					  + str(gt_bbox_t_top) + ' '
+		# 					  + str(gt_bbox_t_right) + ' '
+		# 					  + str(gt_bbox_t_bottom))
+		#
+		# 	# detection
+		# 	molded_images = np.expand_dims(modellib.mold_image(image, self.config), 0)
+		# 	# Run object detection
+		# 	results = self.model.detect([image], verbose=0)
+		# 	r = results[0]
+		#
+		# 	# results_method = pred
+		#
+		# 	# print(r)
+		# 	# TODO probably needs a for loop for each object detected
+		# 	detections_str: List[str] = []
+		# 	for i in range(len(r['rois'])):
+		# 		# class id
+		# 		detected_class_id_t: int = r['class_ids'][i]
+		# 		detected_class_t: str = self.config.CLASS_NAMES[detected_class_id_t]
+		# 		# score (confidence)
+		# 		detected_score_t: float = r['scores'][i]
+		# 		# or left top width height (needs diff command)
+		# 		detected_bbox_t_left = r['rois'][i][0]
+		# 		detected_bbox_t_top = r['rois'][i][1]
+		# 		detected_bbox_t_right = r['rois'][i][2]
+		# 		detected_bbox_t_bottom = r['rois'][i][3]
+		#
+		# 		detection_str: str = detected_class_t + ' ' \
+		# 							 + str(detected_score_t) + ' ' \
+		# 							 + str(detected_bbox_t_left) + ' ' \
+		# 							 + str(detected_bbox_t_top) + ' ' \
+		# 							 + str(detected_bbox_t_right) + ' ' \
+		# 							 + str(detected_bbox_t_bottom) + ' '
+		# 		detections_str.append(detection_str)
+		#
+		# 	detection_file_name = os.path.join(detection_file_path,
+		# 									   str(image_id) + '.txt')
+		# 	with open(detection_file_name, 'w+') as detections_file:
+		# 		for detection_str in detections_str:
+		# 			detections_file.write(detection_str+'\n')
+
+		# # https://gist.github.com/tarlen5/008809c3decf19313de216b9208f3734
+		# ground_truth_dict = {}
+		# prediction_dict = {}
+		# image_ids = self.dataset.image_ids
+		# for image_id in image_ids:
+		# 	# Load image and ground truth data
+		# 	image, image_meta, gt_class_id, gt_bbox, gt_mask = \
+		# 		modellib.load_image_gt(self.dataset, self.config,
+		# 							   image_id, use_mini_mask=False)
+		# 	print(gt_class_id)
+		# 	print(gt_bbox)
+		#
+		# 	# TODO probably needs a for loop for each obejct in the gt
+		# 	gt_class_id_t = gt_class_id[0]
+		# 	gt_class_t = self.config.CLASS_NAMES[gt_class_id_t]
+		# 	# or left top width height (needs diff command)
+		# 	gt_bbox_t_left = gt_bbox[0][0]
+		# 	gt_bbox_t_top = gt_bbox[0][1]
+		# 	gt_bbox_t_right = gt_bbox[0][2]
+		# 	gt_bbox_t_bottom = gt_bbox[0][3]
+		#
+		# 	if str(image_id) not in ground_truth_dict:
+		# 		ground_truth_dict[str(image_id)] = [gt_bbox[0].tolist()]
+		# 	else:
+		# 		ground_truth_dict[str(image_id)].append([gt_bbox[0].tolist()])
+		#
+		# 	# detection
+		# 	molded_images = np.expand_dims(modellib.mold_image(image, self.config), 0)
+		# 	# Run object detection
+		# 	results = self.model.detect([image], verbose=0)
+		# 	r = results[0]
+		#
+		# 	detections_str: List[str] = []
+		# 	for i in range(len(r['rois'])):
+		# 		# class id
+		# 		detected_class_id_t: int = r['class_ids'][i]
+		# 		detected_class_t: str = self.config.CLASS_NAMES[detected_class_id_t]
+		# 		# score (confidence)
+		# 		detected_score_t: float = r['scores'][i]
+		# 		# or left top width height (needs diff command)
+		# 		detected_bbox_t_left = r['rois'][i][0]
+		# 		detected_bbox_t_top = r['rois'][i][1]
+		# 		detected_bbox_t_right = r['rois'][i][2]
+		# 		detected_bbox_t_bottom = r['rois'][i][3]
+		#
+		# 		# detection_str: str = detected_class_t + ' ' \
+		# 		# 					 + str(detected_score_t) + ' ' \
+		# 		# 					 + str(detected_bbox_t_left) + ' ' \
+		# 		# 					 + str(detected_bbox_t_top) + ' ' \
+		# 		# 					 + str(detected_bbox_t_right) + ' ' \
+		# 		# 					 + str(detected_bbox_t_bottom) + ' '
+		# 		# detections_str.append(detection_str)
+		#
+		# 		if str(image_id) not in prediction_dict:
+		# 			prediction_dict[str(image_id)] = {}
+		# 			prediction_dict[str(image_id)]['boxes'] = [r['rois'][i].tolist()]
+		# 			prediction_dict[str(image_id)]['scores'] = [r['scores'][i].tolist()]
+		# 		else:
+		# 			prediction_dict[str(image_id)]['boxes'].append(r['rois'][i].tolist())
+		# 			prediction_dict[str(image_id)]['scores'].append(r['scores'][i].tolist())
+		#
+		# import os
+		# import json
+		# gt_file_path = os.path.join('..',
+		# 							'tarlen5-calculate-mean-ap')
+		# os.makedirs(gt_file_path, exist_ok=True)
+		# gt_file_name = os.path.join(gt_file_path, 'ground_truth_boxes.json')
+		# with open(gt_file_name, 'w+') as gt_file:
+		# 	json.dump(ground_truth_dict, gt_file)
+		#
+		# detection_file_path = os.path.join('..',
+		# 								   'tarlen5-calculate-mean-ap')
+		# os.makedirs(detection_file_path, exist_ok=True)
+		# detection_file_name = os.path.join(detection_file_path, 'predicted_boxes.json')
+		# with open(detection_file_name, 'w+') as detections_file:
+		# 	json.dump(prediction_dict, detections_file)
+		# TODO OLD CODE
 
 # ========================
 # ==    ANALYZER
@@ -417,7 +495,7 @@ class ModelTester(object):
 class Analyzer(object):
 	""" Define analyzer object """
 
-	def __init__(self,model,config,dataset=None):
+	def __init__(self,model,config,dataset=None, gt_data=None, pred_data=None):
 		""" Return an analyzer object """
 
 		# - Model
@@ -498,6 +576,10 @@ class Analyzer(object):
 			'galaxy_C2': (1,1,0),# yellow
 			'galaxy_C3': (1,1,0),# yellow
 		}
+
+		# - Data for calculation of mAP Metrics
+		self.gt_data = gt_data
+		self.pred_data = pred_data
 
 	def set_image_path(self,path):
 		""" Set image path """
@@ -651,12 +733,32 @@ class Analyzer(object):
 		logger.info("Processing ground truth masks ...")
 		self.extract_gt_masks()
 
+		# iterate over classification
+		gt_data_for_image: List = []
+		for bbox_gt, label in zip(self.bboxes_gt, self.captions_gt):
+			gt_instance = bbox_gt.tolist()
+			gt_instance.append(label)
+			gt_data_for_image.append(gt_instance)
+		self.gt_data.append(gt_data_for_image)
+
 		# - Process detected masks
 		if self.nobjects>0:
 			logger.info("Processing detected masks ...")
 			self.extract_det_masks()
 		else:
 			logger.warn("No detected object found for image %s ..." % self.image_path_base)
+
+		# iterate over each detected image, label/classification and score (confidence)
+		pred_data_for_image: List = []
+		for bbox_pred, label_score in zip(self.bboxes, self.captions):
+			pred_object = bbox_pred.tolist()
+			label = label_score.split(' ')[0]
+			pred_object.append(label)
+			# TODO switch back to str? - label, score = split
+			score = float(label_score.split(' ')[1])
+			pred_object.append(score)
+			pred_data_for_image.append(pred_object)
+		self.pred_data.append(pred_data_for_image)
 
 		# - Compute performance results
 		logger.info("Compute performance results for image %s ..." % self.image_path_base)
