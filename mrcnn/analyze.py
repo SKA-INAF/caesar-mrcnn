@@ -297,29 +297,49 @@ class ModelTester(object):
 								  + ' '.join(list(map(str, pred_object[0:3+1])))
 					detections_file.write(pred_str + '\n')
 
+
 		# https://gist.github.com/tarlen5/008809c3decf19313de216b9208f3734
 		gt_dict = {}
 		pred_dict = {}
 
 		for i, (gt_image, pred_image) in enumerate(zip(gt_data, pred_data)):
+			# if len(gt_image) == 0:
+			# 	gt_dict[str(i)] = []
+			# else:
+			# 	for gt_object in gt_image:
+			# 		if str(i) not in gt_dict:
+			# 			gt_dict[str(i)] = [gt_object[0:3+1]]
+			# 		else:
+			# 			gt_dict[str(i)].append(gt_object[0:3+1])
+
+			gt_dict[str(i)] = []
 			for gt_object in gt_image:
-				if str(i) not in gt_dict:
-					gt_dict[str(i)] = [gt_object[0:3+1]]
-				else:
-					gt_dict[str(i)].append(gt_object[0:3+1])
+				gt_dict[str(i)].append(gt_object[0:3 + 1])
 
 			# TODO if pred_image is empty, pred_dict[i] = boxes: [] scores: []
 			# TODO store class data
+			# if len(pred_image) == 0:
+			# 	pred_dict[str(i)] = {}
+			# 	pred_dict[str(i)]['boxes'] = []
+			# 	pred_dict[str(i)]['scores'] = []
+			# else:
+			# 	for pred_object in pred_image:
+			# 		if str(i) not in pred_dict:
+			# 			pred_dict[str(i)] = {}
+			# 			# the first 4 elements are the bounding box
+			# 			pred_dict[str(i)]['boxes'] = [pred_object[0:3+1]]
+			# 			# the last element is the score/confidence
+			# 			pred_dict[str(i)]['scores'] = [pred_object[5]]
+			# 		else:
+			# 			pred_dict[str(i)]['boxes'].append(pred_object[0:3+1])
+			# 			pred_dict[str(i)]['scores'].append(pred_object[5])
+
+			pred_dict[str(i)] = {}
+			pred_dict[str(i)]['boxes'] = []
+			pred_dict[str(i)]['scores'] = []
 			for pred_object in pred_image:
-				if str(i) not in pred_dict:
-					pred_dict[str(i)] = {}
-					# the first 4 elements are the bounding box
-					pred_dict[str(i)]['boxes'] = [pred_object[0:3+1]]
-					# the last element is the score/confidence
-					pred_dict[str(i)]['scores'] = [pred_object[5]]
-				else:
-					pred_dict[str(i)]['boxes'].append(pred_object[0:3+1])
-					pred_dict[str(i)]['scores'].append(pred_object[5])
+				pred_dict[str(i)]['boxes'].append(pred_object[0:3 + 1])
+				pred_dict[str(i)]['scores'].append(pred_object[5])
 
 		print(gt_dict)
 		print(pred_dict)
