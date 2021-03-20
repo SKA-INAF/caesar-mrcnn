@@ -312,9 +312,12 @@ class ModelTester(object):
 			# 		else:
 			# 			gt_dict[str(i)].append(gt_object[0:3+1])
 
-			gt_dict[str(i)] = []
+			gt_dict[str(i)] = {}
+			gt_dict[str(i)]['boxes'] = []
+			gt_dict[str(i)]['class'] = []
 			for gt_object in gt_image:
-				gt_dict[str(i)].append(gt_object[0:3 + 1])
+				gt_dict[str(i)]['boxes'].append(gt_object[0:3 + 1])
+				gt_dict[str(i)]['class'].append(gt_object[4])
 
 			# TODO if pred_image is empty, pred_dict[i] = boxes: [] scores: []
 			# TODO store class data
@@ -336,9 +339,11 @@ class ModelTester(object):
 
 			pred_dict[str(i)] = {}
 			pred_dict[str(i)]['boxes'] = []
+			pred_dict[str(i)]['class'] = []
 			pred_dict[str(i)]['scores'] = []
 			for pred_object in pred_image:
 				pred_dict[str(i)]['boxes'].append(pred_object[0:3 + 1])
+				pred_dict[str(i)]['class'].append(pred_object[4])
 				pred_dict[str(i)]['scores'].append(pred_object[5])
 
 		print(gt_dict)
