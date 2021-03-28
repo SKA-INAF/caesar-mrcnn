@@ -1,0 +1,9 @@
+galaxy 65 104 78 120
+galaxy 39 57 123 86
+source 15 11 18 14
+source 21 117 24 120
+source 56 24 58 27
+source 109 112 113 116
+source 116 91 119 94
+source 125 56 127 60
+source 19 87 25 93
