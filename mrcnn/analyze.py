@@ -5,6 +5,8 @@ import json
 import time
 import datetime
 import logging
+from typing import List		# for type annotation
+
 import numpy as np
 
 
@@ -71,6 +73,7 @@ class ModelTester(object):
 		self.detobj_scoreStdDev= 0
 		self.detobj_iouMean= 0
 		self.detobj_iouStdDev= 0
+		self.mAP = 0
 
 	
 	# ========================
@@ -83,8 +86,16 @@ class ModelTester(object):
 		nimg= 0
 		logger.info("Processing up to %d images " % (self.n_max_img))
 
+		# two Lists which will store the groundtruth + prediction
+		# for each image, for the metrics
+		# TODO convert to attributes (self)
+		# The outer Lists will store a number of Lists, where each of the inner Lists will store the details of the objects in one image
+		# The objects found in each image are themselves stored as a List, storing the bounding box, the classification/label (and the score if it a prediction)
+		gt_data: List[List[List]] = []
+		pred_data: List[List[List]] = []
+
 		for index, image_id in enumerate(self.dataset.image_ids):
-					
+
 			# - Check if stop inspection
 			if self.n_max_img>0 and nimg>=self.n_max_img:
 				logger.info("Max number of images to inspect reached, stop here.")
@@ -97,12 +108,12 @@ class ModelTester(object):
 			image_path_base= os.path.basename(image_path)
 
 			# - Initialize the analyzer
-			analyzer= Analyzer(self.model,self.config,self.dataset)
+			analyzer= Analyzer(self.model,self.config,self.dataset, gt_data, pred_data)
 			analyzer.score_thr= self.score_thr
 			analyzer.iou_thr= self.iou_thr
 			analyzer.remap_classids= self.remap_classids
 			analyzer.classid_map= self.classid_map
-			
+
 			# - Inspecting results
 			logger.info("Inspecting results for image %s ..." % image_path_base)
 			status= analyzer.inspect_results(image_id,image_path)
@@ -113,10 +124,14 @@ class ModelTester(object):
 			# - Update performances
 			logger.info("Updating test performances using results for image %s ..." % image_path_base)
 			self.update_performances(analyzer)
-			
+
 		# - Compute final results
 		logger.info("Computing final performances ...")
 		self.compute_performances()
+
+		# - Compute Mean AveragePrecision (mAP)
+		logger.info("Computing Mean AveragePrecision (mAP) ...")
+		self.compute_mAP(gt_data=gt_data, pred_data=pred_data)
 
 		return 0
 
@@ -198,13 +213,137 @@ class ModelTester(object):
 		print("== DET IOUs ==")
 		print("iouThr=%f, <iou>=%f, sigma(iou)=%f" % (self.iou_thr,self.detobj_iouMean,self.detobj_iouStdDev))
 
+	def compute_mAP(self, gt_data, pred_data):
+		# # Compute VOC-Style mAP @ IoU=0.5
+		# # Running on 10 images. Increase for better accuracy.
+		# image_ids = np.random.choice(dataset_val.image_ids, 10)
+		# APs = []
+		# for image_id in image_ids:
+		# 	# Load image and ground truth data
+		# 	image, image_meta, gt_class_id, gt_bbox, gt_mask = \
+		# 		modellib.load_image_gt(dataset_val, inference_config,
+		# 							   image_id, use_mini_mask=False)
+		# 	molded_images = np.expand_dims(modellib.mold_image(image, inference_config), 0)
+		# 	# Run object detection
+		# 	results = model.detect([image], verbose=0)
+		# 	r = results[0]
+		# 	# Compute AP
+		# 	AP, precisions, recalls, overlaps = \
+		# 		utils.compute_ap(gt_bbox, gt_class_id, gt_mask,
+		# 						 r["rois"], r["class_ids"], r["scores"], r['masks'])
+		# 	APs.append(AP)
+		#
+		# print("mAP: ", np.mean(APs))
+
+		# Compute VOC-Style mAP @ IoU=0.5
+		# Running on 10 images. Increase for better accuracy.
+		# image_ids = np.random.choice(dataset_val.image_ids, 10)
+		image_ids = self.dataset.image_ids
+		APs = []
+		# for image_id in image_ids:
+		# TODO
+		for image_id in image_ids[:1]:
+			# Load image and ground truth data
+			image, image_meta, gt_class_id, gt_bbox, gt_mask = \
+				modellib.load_image_gt(self.dataset, self.config,
+									   image_id, use_mini_mask=False)
+			molded_images = np.expand_dims(modellib.mold_image(image, self.config), 0)
+			# Run object detection
+			results = self.model.detect([image], verbose=0)
+			r = results[0]
+			# Compute AP
+			AP, precisions, recalls, overlaps = \
+				utils.compute_ap(gt_bbox, gt_class_id, gt_mask,
+								 r["rois"], r["class_ids"], r["scores"], r['masks'],
+								 self.iou_thr)
+			APs.append(AP)
+
+		self.mAP: float = np.mean(APs)
+
+		print("== Mean AveragePrecision (mAP) ==")
+		print("mAP=%f" % (self.mAP))
+
+		# Object-Detection-Metrics https://github.com/rafaelpadilla/Object-Detection-Metrics
+		import os
+		# create the file paths in case they don't already exist
+		gt_file_path = os.path.join('..',
+									'Object-Detection-Metrics',
+									'groundtruths')
+		os.makedirs(gt_file_path, exist_ok=True)
+		detection_file_path = os.path.join('..',
+										   'Object-Detection-Metrics',
+										   'detections')
+		os.makedirs(detection_file_path, exist_ok=True)
+
+		for i, (gt_image, pred_image) in enumerate(zip(gt_data, pred_data)):
+			gt_file_name = os.path.join(gt_file_path,
+										str(i)+'.txt')
+			with open(gt_file_name, 'w+') as gt_file:
+				for gt_object in gt_image:
+					# gt_file.write(' '.join(list(map(str, gt_object))) + '\n')
+					gt_str: str = gt_object[4] + ' '\
+								  + ' '.join(list(map(str, gt_object[0:3+1])))
+					gt_file.write(gt_str + '\n')
+
+			detection_file_name = os.path.join(detection_file_path,
+											   str(i)+'.txt')
+			with open(detection_file_name, 'w+') as detections_file:
+				for pred_object in pred_image:
+					# detections_file.write(' '.join(list(map(str, pred_object))) + '\n')
+					pred_str: str = pred_object[4] + ' ' + str(pred_object[5]) + ' '\
+								  + ' '.join(list(map(str, pred_object[0:3+1])))
+					detections_file.write(pred_str + '\n')
+
+
+		# https://gist.github.com/tarlen5/008809c3decf19313de216b9208f3734
+		gt_dict = {}
+		pred_dict = {}
+
+		for i, (gt_image, pred_image) in enumerate(zip(gt_data, pred_data)):
+			gt_dict[str(i)] = {}
+			gt_dict[str(i)]['boxes'] = []
+			gt_dict[str(i)]['class'] = []
+			for gt_object in gt_image:
+				gt_dict[str(i)]['boxes'].append(gt_object[0:3 + 1])
+				gt_dict[str(i)]['class'].append(gt_object[4])
+
+			pred_dict[str(i)] = {}
+			pred_dict[str(i)]['boxes'] = []
+			pred_dict[str(i)]['class'] = []
+			pred_dict[str(i)]['scores'] = []
+			for pred_object in pred_image:
+				pred_dict[str(i)]['boxes'].append(pred_object[0:3 + 1])
+				pred_dict[str(i)]['class'].append(pred_object[4])
+				pred_dict[str(i)]['scores'].append(pred_object[5])
+
+		print(gt_dict)
+		print(pred_dict)
+
+		import os
+		import json
+
+		gt_file_path = os.path.join('..',
+									'tarlen5-calculate-mean-ap')
+		os.makedirs(gt_file_path, exist_ok=True)
+		gt_file_name = os.path.join(gt_file_path, 'ground_truth_boxes.json')
+		with open(gt_file_name, 'w+') as gt_file:
+			json.dump(gt_dict, gt_file)
+
+		detection_file_path = os.path.join('..',
+										   'tarlen5-calculate-mean-ap')
+		os.makedirs(detection_file_path, exist_ok=True)
+		detection_file_name = os.path.join(detection_file_path, 'predicted_boxes.json')
+		with open(detection_file_name, 'w+') as detections_file:
+			json.dump(pred_dict, detections_file)
+
+
 # ========================
 # ==    ANALYZER
 # ========================
 class Analyzer(object):
 	""" Define analyzer object """
 
-	def __init__(self,model,config,dataset=None):
+	def __init__(self,model,config,dataset=None, gt_data=None, pred_data=None):
 		""" Return an analyzer object """
 
 		# - Model
@@ -285,6 +424,10 @@ class Analyzer(object):
 			'galaxy_C2': (1,1,0),# yellow
 			'galaxy_C3': (1,1,0),# yellow
 		}
+
+		# - Data for calculation of mAP Metrics
+		self.gt_data = gt_data
+		self.pred_data = pred_data
 
 	def set_image_path(self,path):
 		""" Set image path """
@@ -438,12 +581,32 @@ class Analyzer(object):
 		logger.info("Processing ground truth masks ...")
 		self.extract_gt_masks()
 
+		# iterate over classification
+		gt_data_for_image: List = []
+		for bbox_gt, label in zip(self.bboxes_gt, self.captions_gt):
+			gt_instance = bbox_gt.tolist()
+			gt_instance.append(label)
+			gt_data_for_image.append(gt_instance)
+		self.gt_data.append(gt_data_for_image)
+
 		# - Process detected masks
 		if self.nobjects>0:
 			logger.info("Processing detected masks ...")
 			self.extract_det_masks()
 		else:
 			logger.warn("No detected object found for image %s ..." % self.image_path_base)
+
+		# iterate over each detected image, label/classification and score (confidence)
+		pred_data_for_image: List = []
+		for bbox_pred, label_score in zip(self.bboxes, self.captions):
+			pred_object = bbox_pred.tolist()
+			label = label_score.split(' ')[0]
+			pred_object.append(label)
+			# TODO switch back to str? - label, score = split
+			score = float(label_score.split(' ')[1])
+			pred_object.append(score)
+			pred_data_for_image.append(pred_object)
+		self.pred_data.append(pred_data_for_image)
 
 		# - Compute performance results
 		logger.info("Compute performance results for image %s ..." % self.image_path_base)
