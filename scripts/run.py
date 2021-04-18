@@ -408,7 +408,8 @@ class SourceDataset(utils.Dataset):
 		logger.debug("#%d objects present in file %s ..." % (nobjs,filename))
 				
 		mask_paths= []
-		class_ids= []	
+		class_ids= []
+		sidelobes_mixed_or_near= []
 		good_masks= True
 				
 		for obj_dict in d['objs']:
@@ -425,10 +426,17 @@ class SourceDataset(utils.Dataset):
 				class_id= self.class_id_map.get(class_name)
 			else:
 				logger.warn("Image file %s class name (%s) is not present in dictionary, skip it..." % (img_fullpath,class_name))
-				continue	
+				continue
+
+			# check if this mask is that of a source close to a sidelobe
+			sidelobe_mixed_or_near = 0
+			if ('sidelobe-mixed' in obj_dict) and ('sidelobe-near' in obj_dict):
+				if (obj_dict['sidelobe-mixed'] == 1) or (obj_dict['sidelobe-near'] == 1):
+					sidelobe_mixed_or_near = 1
 
 			mask_paths.append(mask_fullpath)
 			class_ids.append(class_id)
+			sidelobes_mixed_or_near.append(sidelobe_mixed_or_near)
 				
 		if not good_masks:
 			logger.error("One or more mask of file %s does not exist or have unexpected extension (.fits required)" % img_fullpath)
