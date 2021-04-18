@@ -436,7 +436,7 @@ class SourceDataset(utils.Dataset):
 					
 		# - Add image & mask informations in dataset class
 		self.add_image(
-    	"rg-dataset",
+			"rg-dataset",
 			image_id=img_id,
 			path=img_fullpath,
 			path_masks=mask_paths,
