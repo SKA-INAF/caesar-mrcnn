@@ -382,6 +382,7 @@ class Analyzer(object):
 		self.bboxes_gt= []
 		self.captions_gt= []
 		self.split_gtmasks= False
+		self.sidelobes_mixed_or_near_gt_merged= []
 
 		# - Processed detected masks
 		self.masks_final= []
@@ -493,6 +494,7 @@ class Analyzer(object):
 		self.class_names_gt= self.dataset.class_names
 		self.masks_gt= self.dataset.load_gt_masks(self.image_id,binary=False)
 		self.class_ids_gt = self.dataset.image_info[self.image_id]["class_ids"]
+		self.sidelobes_mixed_or_near_gt = self.dataset.image_info[self.image_id]['sidelobes_mixed_or_near']
 		logger.debug("class_ids_gt elements: {}".format(' '.join(map(str, self.class_ids_gt))))
 		#print("masks_gt shape")
 		#print(self.masks_gt.shape)
@@ -632,6 +634,7 @@ class Analyzer(object):
 		self.class_ids_gt_merged= []
 		self.bboxes_gt= []
 		self.captions_gt= []
+		self.sidelobes_mixed_or_near_gt_merged= []
 
 		# - Split ground truth masks and merge connected ones (if enabled)
 		if self.split_gtmasks:
@@ -641,15 +644,18 @@ class Analyzer(object):
 
 			masks_gt_det= []
 			class_ids_gt_det= []
+			sidelobes_mixed_or_near_gt_det = []
 		
 			for k in range(self.masks_gt.shape[-1]):
 				mask_gt= self.masks_gt[:,:,k]
 				label_gt= self.labels_gt[k]
 				class_id_gt= self.class_ids_gt[k]
+				sidelobe_mixed_or_near_gt= self.sidelobes_mixed_or_near_gt[k]
 
 				if label_gt=='galaxy_C2' or label_gt=='galaxy_C3' or label_gt=='galaxy':
 					masks_gt_det.append(mask_gt)
 					class_ids_gt_det.append(class_id_gt)
+					sidelobes_mixed_or_near_gt_det.append(sidelobe_mixed_or_near_gt)
 					continue
 
 				component_labels_gt, ncomponents_gt= self.extract_mask_connected_components(mask_gt)
@@ -669,6 +675,7 @@ class Analyzer(object):
 
 					masks_gt_det.append(extracted_mask)
 					class_ids_gt_det.append(object_classid)
+					sidelobes_mixed_or_near_gt_det.append(sidelobe_mixed_or_near_gt)
 			
 			N= len(masks_gt_det)
 			g= Graph(N)
@@ -696,6 +703,7 @@ class Analyzer(object):
 					index= cc[i][j]
 					mask= masks_gt_det[index]
 					class_id= class_ids_gt_det[index]
+					sidelobe_mixed_or_near_gt= sidelobes_mixed_or_near_gt_det[index]
 			
 					logger.debug("Merging GT mask no. %d (class_id=%d) ..." % (index,class_id))
 					if j==0:
@@ -706,6 +714,7 @@ class Analyzer(object):
 	
 				self.masks_gt_merged.append(merged_mask)
 				self.class_ids_gt_merged.append(class_id)
+				self.sidelobes_mixed_or_near_gt_merged.append(sidelobe_mixed_or_near_gt)
 		
 		else:
 			# - No actions done on input gt masks
@@ -714,9 +723,11 @@ class Analyzer(object):
 				mask_gt= self.masks_gt[:,:,k]
 				label_gt= self.labels_gt[k]
 				class_id_gt= self.class_ids_gt[k]
+				sidelobe_mixed_or_near_gt= self.sidelobes_mixed_or_near_gt[k]
 				logger.info("GT mask no. %d: classId=%d, label=%s" % (k,class_id_gt,label_gt))
 				self.masks_gt_merged.append(mask_gt)
 				self.class_ids_gt_merged.append(class_id_gt)
+				self.sidelobes_mixed_or_near_gt_merged.append(sidelobe_mixed_or_near_gt)
 
 		
 		# - Compute GT bbox and captions

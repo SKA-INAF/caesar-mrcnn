@@ -448,7 +448,8 @@ class SourceDataset(utils.Dataset):
 			image_id=img_id,
 			path=img_fullpath,
 			path_masks=mask_paths,
-			class_ids=class_ids
+			class_ids=class_ids,
+			sidelobes_mixed_or_near=sidelobes_mixed_or_near
 		)
 	
 		return 0
