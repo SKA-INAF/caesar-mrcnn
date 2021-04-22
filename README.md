@@ -75,7 +75,10 @@ Supported options are:
 * `--nimg_per_gpu=[N]`: Number of images per gpu. Default: 1   
 * `--nepochs=[N]`: Number of training epochs. Default: 1   
 
+*TEST OPTIONS*
 
-
-
-
+* `--scoreThr=[SCORE_THRESHOLD]`: Score Threshold to use during evaluation. Default: 0.7 
+* `--iouThr=[IOU_THRESHOLD]`: IoU Threshold to use during evaluation. Default: 0.6
+* `--consider_sources_near_mixed_sidelobes` or `--no_consider_sources_near_mixed_sidelobes`: Whether to consider
+  sources that are flagged to be near or mixed with sidelobes during evaluation. Default: Considered
+  
