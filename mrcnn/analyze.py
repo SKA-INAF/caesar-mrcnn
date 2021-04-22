@@ -583,7 +583,8 @@ class Analyzer(object):
 		logger.info("Processing ground truth masks ...")
 		self.extract_gt_masks()
 
-		# iterate over classification
+		# iterate over groundtruth objects in this image
+		# (to prepare data for external metric tools)
 		gt_data_for_image: List = []
 		for bbox_gt, label in zip(self.bboxes_gt, self.captions_gt):
 			gt_instance = bbox_gt.tolist()
@@ -598,7 +599,9 @@ class Analyzer(object):
 		else:
 			logger.warn("No detected object found for image %s ..." % self.image_path_base)
 
-		# iterate over each detected image, label/classification and score (confidence)
+		# iterate over each detected object in the image
+		# and store the bounding box, label/classification, and score (confidence)
+		# (to prepare data for external metric tools)
 		pred_data_for_image: List = []
 		for bbox_pred, label_score in zip(self.bboxes, self.captions):
 			pred_object = bbox_pred.tolist()
@@ -1098,6 +1101,13 @@ class Analyzer(object):
 
 		# - Loop over gt boxes and find associations to det boxes
 		for i in range(len(self.bboxes_gt)):
+			# if it is specified not to consider sources near or mixed with sidelobes
+			if not self.dataset.consider_sources_near_mixed_sidelobes:
+				# and if the current object (source) is near, or mixed with, a sidelobe,
+				# do not consider this object in the evaluation
+				if self.sidelobes_mixed_or_near_gt_merged[i] == 1:
+					continue
+
 			bbox_gt= self.bboxes_gt[i]
 			class_id_gt= self.class_ids_gt_merged[i]
 			self.nobjs_true[0][class_id_gt]+= 1

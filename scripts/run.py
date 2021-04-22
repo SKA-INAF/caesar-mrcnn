@@ -853,7 +853,8 @@ def create_test_dataset(args):
 	dataset.convert_to_uint8= args.to_uint8
 	dataset.apply_biascontrast= args.biascontrast 
 	dataset.bias= args.bias
-	dataset.contrast= args.contrast	
+	dataset.contrast= args.contrast
+	dataset.consider_sources_near_mixed_sidelobes= args.consider_sources_near_mixed_sidelobes
 
 	if args.dataloader=='datalist':
 		if dataset.load_data_from_list(args.datalist, args.maxnimgs)<0:
@@ -1143,6 +1144,10 @@ def parse_args():
 	parser.add_argument('--scoreThr', required=False,default=0.7,type=float,metavar="Object detection score threshold to be used during test",help="Object detection score threshold to be used during test")
 	parser.add_argument('--iouThr', required=False,default=0.6,type=float,metavar="IOU threshold used to match detected objects with true objects",help="IOU threshold used to match detected objects with true objects")
 
+	parser.add_argument('--consider_sources_near_mixed_sidelobes', dest='consider_sources_near_mixed_sidelobes', action='store_true')
+	parser.add_argument('--no_consider_sources_near_mixed_sidelobes', dest='consider_sources_near_mixed_sidelobes', action='store_false')
+	parser.set_defaults(consider_sources_near_mixed_sidelobes=True)
+
 	# - DETECT OPTIONS
 	parser.add_argument('--image',required=False,metavar="Input image",type=str,help='Input image in FITS format to apply the model (used in detect task)')
 
@@ -1318,6 +1323,8 @@ def main():
 
 	mask_loss_function = args.mask_loss_function
 
+	consider_sources_near_mixed_sidelobes = args.consider_sources_near_mixed_sidelobes
+
 	#===========================
 	#==   LOAD DATASETS
 	#===========================
@@ -1462,4 +1469,3 @@ def main():
 ###################
 if __name__ == "__main__":
 	sys.exit(main())
-
