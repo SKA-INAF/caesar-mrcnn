@@ -583,10 +583,26 @@ class Analyzer(object):
 		logger.info("Processing ground truth masks ...")
 		self.extract_gt_masks()
 
+		# # iterate over groundtruth objects in this image
+		# # (to prepare data for external metric tools)
+		# gt_data_for_image: List = []
+		# for bbox_gt, label in zip(self.bboxes_gt, self.captions_gt):
+		# 	gt_instance = bbox_gt.tolist()
+		# 	gt_instance.append(label)
+		# 	gt_data_for_image.append(gt_instance)
+		# self.gt_data.append(gt_data_for_image)
+
 		# iterate over groundtruth objects in this image
 		# (to prepare data for external metric tools)
 		gt_data_for_image: List = []
-		for bbox_gt, label in zip(self.bboxes_gt, self.captions_gt):
+		for i, (bbox_gt, label) in enumerate(zip(self.bboxes_gt, self.captions_gt)):
+			# if it is specified not to consider sources near or mixed with sidelobes
+			if not self.dataset.consider_sources_near_mixed_sidelobes:
+				# and if the current object (source) is near, or mixed with, a sidelobe,
+				# do not consider this object in the evaluation
+				if self.sidelobes_mixed_or_near_gt_merged[i] == 1:
+					continue
+
 			gt_instance = bbox_gt.tolist()
 			gt_instance.append(label)
 			gt_data_for_image.append(gt_instance)
