@@ -382,6 +382,7 @@ class Analyzer(object):
 		self.bboxes_gt= []
 		self.captions_gt= []
 		self.split_gtmasks= False
+		self.sidelobes_mixed_or_near_gt_merged= []
 
 		# - Processed detected masks
 		self.masks_final= []
@@ -493,6 +494,7 @@ class Analyzer(object):
 		self.class_names_gt= self.dataset.class_names
 		self.masks_gt= self.dataset.load_gt_masks(self.image_id,binary=False)
 		self.class_ids_gt = self.dataset.image_info[self.image_id]["class_ids"]
+		self.sidelobes_mixed_or_near_gt = self.dataset.image_info[self.image_id]['sidelobes_mixed_or_near']
 		logger.debug("class_ids_gt elements: {}".format(' '.join(map(str, self.class_ids_gt))))
 		#print("masks_gt shape")
 		#print(self.masks_gt.shape)
@@ -581,9 +583,26 @@ class Analyzer(object):
 		logger.info("Processing ground truth masks ...")
 		self.extract_gt_masks()
 
-		# iterate over classification
+		# # iterate over groundtruth objects in this image
+		# # (to prepare data for external metric tools)
+		# gt_data_for_image: List = []
+		# for bbox_gt, label in zip(self.bboxes_gt, self.captions_gt):
+		# 	gt_instance = bbox_gt.tolist()
+		# 	gt_instance.append(label)
+		# 	gt_data_for_image.append(gt_instance)
+		# self.gt_data.append(gt_data_for_image)
+
+		# iterate over groundtruth objects in this image
+		# (to prepare data for external metric tools)
 		gt_data_for_image: List = []
-		for bbox_gt, label in zip(self.bboxes_gt, self.captions_gt):
+		for i, (bbox_gt, label) in enumerate(zip(self.bboxes_gt, self.captions_gt)):
+			# if it is specified not to consider sources near or mixed with sidelobes
+			if not self.dataset.consider_sources_near_mixed_sidelobes:
+				# and if the current object (source) is near, or mixed with, a sidelobe,
+				# do not consider this object in the evaluation
+				if self.sidelobes_mixed_or_near_gt_merged[i] == 1:
+					continue
+
 			gt_instance = bbox_gt.tolist()
 			gt_instance.append(label)
 			gt_data_for_image.append(gt_instance)
@@ -596,7 +615,9 @@ class Analyzer(object):
 		else:
 			logger.warn("No detected object found for image %s ..." % self.image_path_base)
 
-		# iterate over each detected image, label/classification and score (confidence)
+		# iterate over each detected object in the image
+		# and store the bounding box, label/classification, and score (confidence)
+		# (to prepare data for external metric tools)
 		pred_data_for_image: List = []
 		for bbox_pred, label_score in zip(self.bboxes, self.captions):
 			pred_object = bbox_pred.tolist()
@@ -632,6 +653,7 @@ class Analyzer(object):
 		self.class_ids_gt_merged= []
 		self.bboxes_gt= []
 		self.captions_gt= []
+		self.sidelobes_mixed_or_near_gt_merged= []
 
 		# - Split ground truth masks and merge connected ones (if enabled)
 		if self.split_gtmasks:
@@ -641,15 +663,18 @@ class Analyzer(object):
 
 			masks_gt_det= []
 			class_ids_gt_det= []
+			sidelobes_mixed_or_near_gt_det = []
 		
 			for k in range(self.masks_gt.shape[-1]):
 				mask_gt= self.masks_gt[:,:,k]
 				label_gt= self.labels_gt[k]
 				class_id_gt= self.class_ids_gt[k]
+				sidelobe_mixed_or_near_gt= self.sidelobes_mixed_or_near_gt[k]
 
 				if label_gt=='galaxy_C2' or label_gt=='galaxy_C3' or label_gt=='galaxy':
 					masks_gt_det.append(mask_gt)
 					class_ids_gt_det.append(class_id_gt)
+					sidelobes_mixed_or_near_gt_det.append(sidelobe_mixed_or_near_gt)
 					continue
 
 				component_labels_gt, ncomponents_gt= self.extract_mask_connected_components(mask_gt)
@@ -669,6 +694,7 @@ class Analyzer(object):
 
 					masks_gt_det.append(extracted_mask)
 					class_ids_gt_det.append(object_classid)
+					sidelobes_mixed_or_near_gt_det.append(sidelobe_mixed_or_near_gt)
 			
 			N= len(masks_gt_det)
 			g= Graph(N)
@@ -696,6 +722,7 @@ class Analyzer(object):
 					index= cc[i][j]
 					mask= masks_gt_det[index]
 					class_id= class_ids_gt_det[index]
+					sidelobe_mixed_or_near_gt= sidelobes_mixed_or_near_gt_det[index]
 			
 					logger.debug("Merging GT mask no. %d (class_id=%d) ..." % (index,class_id))
 					if j==0:
@@ -706,6 +733,7 @@ class Analyzer(object):
 	
 				self.masks_gt_merged.append(merged_mask)
 				self.class_ids_gt_merged.append(class_id)
+				self.sidelobes_mixed_or_near_gt_merged.append(sidelobe_mixed_or_near_gt)
 		
 		else:
 			# - No actions done on input gt masks
@@ -714,9 +742,11 @@ class Analyzer(object):
 				mask_gt= self.masks_gt[:,:,k]
 				label_gt= self.labels_gt[k]
 				class_id_gt= self.class_ids_gt[k]
+				sidelobe_mixed_or_near_gt= self.sidelobes_mixed_or_near_gt[k]
 				logger.info("GT mask no. %d: classId=%d, label=%s" % (k,class_id_gt,label_gt))
 				self.masks_gt_merged.append(mask_gt)
 				self.class_ids_gt_merged.append(class_id_gt)
+				self.sidelobes_mixed_or_near_gt_merged.append(sidelobe_mixed_or_near_gt)
 
 		
 		# - Compute GT bbox and captions
@@ -1087,6 +1117,13 @@ class Analyzer(object):
 
 		# - Loop over gt boxes and find associations to det boxes
 		for i in range(len(self.bboxes_gt)):
+			# if it is specified not to consider sources near or mixed with sidelobes
+			if not self.dataset.consider_sources_near_mixed_sidelobes:
+				# and if the current object (source) is near, or mixed with, a sidelobe,
+				# do not consider this object in the evaluation
+				if self.sidelobes_mixed_or_near_gt_merged[i] == 1:
+					continue
+
 			bbox_gt= self.bboxes_gt[i]
 			class_id_gt= self.class_ids_gt_merged[i]
 			self.nobjs_true[0][class_id_gt]+= 1

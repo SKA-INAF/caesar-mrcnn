@@ -408,7 +408,8 @@ class SourceDataset(utils.Dataset):
 		logger.debug("#%d objects present in file %s ..." % (nobjs,filename))
 				
 		mask_paths= []
-		class_ids= []	
+		class_ids= []
+		sidelobes_mixed_or_near= []
 		good_masks= True
 				
 		for obj_dict in d['objs']:
@@ -425,10 +426,17 @@ class SourceDataset(utils.Dataset):
 				class_id= self.class_id_map.get(class_name)
 			else:
 				logger.warn("Image file %s class name (%s) is not present in dictionary, skip it..." % (img_fullpath,class_name))
-				continue	
+				continue
+
+			# check if this mask is that of a source close to a sidelobe
+			sidelobe_mixed_or_near = 0
+			if ('sidelobe-mixed' in obj_dict) and ('sidelobe-near' in obj_dict):
+				if (obj_dict['sidelobe-mixed'] == 1) or (obj_dict['sidelobe-near'] == 1):
+					sidelobe_mixed_or_near = 1
 
 			mask_paths.append(mask_fullpath)
 			class_ids.append(class_id)
+			sidelobes_mixed_or_near.append(sidelobe_mixed_or_near)
 				
 		if not good_masks:
 			logger.error("One or more mask of file %s does not exist or have unexpected extension (.fits required)" % img_fullpath)
@@ -436,11 +444,12 @@ class SourceDataset(utils.Dataset):
 					
 		# - Add image & mask informations in dataset class
 		self.add_image(
-    	"rg-dataset",
+			"rg-dataset",
 			image_id=img_id,
 			path=img_fullpath,
 			path_masks=mask_paths,
-			class_ids=class_ids
+			class_ids=class_ids,
+			sidelobes_mixed_or_near=sidelobes_mixed_or_near
 		)
 	
 		return 0
@@ -844,7 +853,8 @@ def create_test_dataset(args):
 	dataset.convert_to_uint8= args.to_uint8
 	dataset.apply_biascontrast= args.biascontrast 
 	dataset.bias= args.bias
-	dataset.contrast= args.contrast	
+	dataset.contrast= args.contrast
+	dataset.consider_sources_near_mixed_sidelobes= args.consider_sources_near_mixed_sidelobes
 
 	if args.dataloader=='datalist':
 		if dataset.load_data_from_list(args.datalist, args.maxnimgs)<0:
@@ -1134,6 +1144,10 @@ def parse_args():
 	parser.add_argument('--scoreThr', required=False,default=0.7,type=float,metavar="Object detection score threshold to be used during test",help="Object detection score threshold to be used during test")
 	parser.add_argument('--iouThr', required=False,default=0.6,type=float,metavar="IOU threshold used to match detected objects with true objects",help="IOU threshold used to match detected objects with true objects")
 
+	parser.add_argument('--consider_sources_near_mixed_sidelobes', dest='consider_sources_near_mixed_sidelobes', action='store_true')
+	parser.add_argument('--no_consider_sources_near_mixed_sidelobes', dest='consider_sources_near_mixed_sidelobes', action='store_false')
+	parser.set_defaults(consider_sources_near_mixed_sidelobes=True)
+
 	# - DETECT OPTIONS
 	parser.add_argument('--image',required=False,metavar="Input image",type=str,help='Input image in FITS format to apply the model (used in detect task)')
 
@@ -1309,6 +1323,8 @@ def main():
 
 	mask_loss_function = args.mask_loss_function
 
+	consider_sources_near_mixed_sidelobes = args.consider_sources_near_mixed_sidelobes
+
 	#===========================
 	#==   LOAD DATASETS
 	#===========================
@@ -1453,4 +1469,3 @@ def main():
 ###################
 if __name__ == "__main__":
 	sys.exit(main())
-

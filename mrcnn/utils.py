@@ -988,8 +988,8 @@ def read_table(filename):
 
 def read_fits(filename, stretch=True, normalize=True, convertToRGB=True, zscale_contrasts=[0.25,0.25,0.25], to_uint8=True, stretch_biascontrast=False, contrast=1, bias=0.5):
     """ Read FITS image """
-	
-		# - Check contrasts
+
+	# - Check contrasts
     zscale_contrasts_default= [0.25,0.25,0.25]
     if len(zscale_contrasts)!=3:
         logger.warn("Size of input zscale_contrasts is !=3, ignoring inputs and using default (0.25,0.25,0.25)...")
