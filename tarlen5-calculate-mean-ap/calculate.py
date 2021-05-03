@@ -397,8 +397,8 @@ def get_avg_precision_at_iou_per_class(gt_boxes, pred_boxes, classification, iou
         'model_thrs': model_thrs}
 
 
-def plot_pr_curve(
-    precisions, recalls, category='Objects', label=None, color=None, ax=None):
+def plot_pr_curve(precisions, recalls, category='Objects',
+                  label=None, color=None, ax=None, linestyle='solid'):
     """Simple plotting helper function"""
 
     if ax is None:
@@ -407,7 +407,9 @@ def plot_pr_curve(
 
     if color is None:
         color = COLORS[0]
-    ax.scatter(recalls, precisions, label=label, s=20, color=color)
+    # ax.scatter(recalls, precisions, label=label, s=20, color=color)
+    # ax.scatter(recalls, precisions, label='_nolegend_', s=20, color=color)
+    ax.plot(recalls, precisions, label=label, color=color, linestyle=linestyle)
     ax.set_xlabel('recall')
     ax.set_ylabel('precision')
     ax.set_title('Precision-Recall curve for {}'.format(category))
@@ -581,21 +583,30 @@ if __name__ == "__main__":
     #         precisions, recalls, label='{:.2f}'.format(iou_thr), color=COLORS[idx * 2], ax=ax)
     classes = ['source', 'sidelobe', 'galaxy']
     for i, classification in enumerate(classes):
-    # for i, classification in enumerate(['source', 'sidelobe', 'galaxy']):
-        for j, iou_thr in enumerate(np.linspace(0.5, 0.6, 2)):
+        for iou_thr in np.linspace(0.5, 0.6, 2):
             if classification == 'source':
                 data = get_avg_precision_at_iou(gt_boxes_source, pred_boxes_source, iou_thr=iou_thr)
+                colour = 'blue'
             elif classification == 'sidelobe':
                 data = get_avg_precision_at_iou(gt_boxes_sidelobe, pred_boxes_sidelobe, iou_thr=iou_thr)
+                colour = 'red'
             elif classification == 'galaxy':
                 data = get_avg_precision_at_iou(gt_boxes_galaxy, pred_boxes_galaxy, iou_thr=iou_thr)
+                colour = 'green'
             avg_precs.append(data['avg_prec'])
             iou_thrs.append(iou_thr)
 
             precisions = data['precisions']
             recalls = data['recalls']
-            ax = plot_pr_curve(precisions, recalls, label=classification+' @ {:.2f}'.format(iou_thr),
-                               color=COLORS[i*len(classes) + j], ax=ax)
+
+            if iou_thr == 0.5:
+                line_style = 'solid'
+            elif iou_thr == 0.6:
+                line_style = 'dashed'
+            # ax = plot_pr_curve(precisions, recalls, label=classification+' @ {:.2f}'.format(iou_thr),
+            #                    color=COLORS[i*len(classes) + j], ax=ax)
+            ax = plot_pr_curve(precisions, recalls, label=classification + ' @ {:.2f}'.format(iou_thr),
+                               color=colour, ax=ax, linestyle=line_style)
 
 
     # prettify for printing:
