@@ -1016,7 +1016,9 @@ def detect(args, model, config):
 	# - Apply model 
 	analyzer= Analyzer(model,config)
 	analyzer.draw= True
+	analyzer.outfile= args.detect_outfile
 	analyzer.write_to_json= True
+	analyzer.outfile_json= args.detect_outfile_json
 	analyzer.iou_thr= args.iouThr
 	analyzer.score_thr= args.scoreThr
 
@@ -1150,6 +1152,8 @@ def parse_args():
 
 	# - DETECT OPTIONS
 	parser.add_argument('--image',required=False,metavar="Input image",type=str,help='Input image in FITS format to apply the model (used in detect task)')
+	parser.add_argument('--detect_outfile',required=False,metavar="Output plot filename",type=str,default="",help='Output plot PNG filename (internally generated if left empty)')
+	parser.add_argument('--detect_outfile_json',required=False,metavar="Output json filename with detected objects",type=str,default="",help='Output json filename with detected objects (internally generated if left empty)')
 
 	args = parser.parse_args()
 

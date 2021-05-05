@@ -80,6 +80,12 @@ fi
 #######################################
 ##         PARSE ARGS
 #######################################
+export JOB_DIR="$PWD"
+export OUTPUT_DIR="$PWD"
+
+WAIT_COPY=false
+COPY_WAIT_TIME=30
+
 RUNMODE=""
 GRAYIMG_OPTION=""
 CLASS_DICT_MODEL="{\"sidelobe\":1,\"source\":2,\"galaxy\":3}"
@@ -310,6 +316,19 @@ do
 		--runmode=*)
     	RUNMODE=`echo $item | /bin/sed 's/[-a-zA-Z0-9]*=//'`
     ;;
+		--outdir=*)
+    	OUTPUT_DIR=`echo $item | /bin/sed 's/[-a-zA-Z0-9]*=//'`
+    ;;
+		--waitcopy*)
+    	WAIT_COPY=true
+    ;;
+		--copywaittime=*)
+    	COPY_WAIT_TIME=`echo $item | /bin/sed 's/[-a-zA-Z0-9]*=//'`
+    ;;
+	
+		--jobdir=*)
+    	JOB_DIR=`echo $item | /bin/sed 's/[-a-zA-Z0-9]*=//'`
+    ;;
 
     *)
     # Unknown option
@@ -318,6 +337,16 @@ do
     ;;
 	esac
 done
+
+if [ "$JOB_DIR" = "" ]; then
+  echo "WARN: Empty JOB_DIR given, setting it to pwd ($PWD) ..."
+	JOB_DIR="$PWD"
+fi
+
+if [ "$OUTPUT_DIR" = "" ]; then
+  echo "WARN: Empty OUTPUT_DIR given, setting it to pwd ($PWD) ..."
+	OUTPUT_DIR="$PWD"
+fi
 
 
 ###########################
@@ -366,10 +395,18 @@ EXE_ARGS="$EXE_ARGS $NGPU_OPTION "
 EXE_ARGS="$EXE_ARGS $NIMG_PER_GPU_OPTION "
 EXE_ARGS="$EXE_ARGS $RUNMODE "
 
+# - Check if job directory exists
+if [ ! -d "$JOB_DIR" ] ; then 
+  echo "INFO: Job dir $JOB_DIR not existing, creating it now ..."
+	mkdir -p "$JOB_DIR" 
+fi
+
+# - Moving to job directory
+echo "INFO: Moving to job directory $JOB_DIR ..."
+cd $JOB_DIR
 
 # - Run command
 echo "INFO: Running mask-rcnn with args: $EXE_ARGS"
-#exec $CMD &
 python3 $MASKRCNN_DIR/bin/run.py $EXE_ARGS
 
 STATUS=$?
@@ -377,6 +414,37 @@ if [ $STATUS -ne 0 ];
 then
 	echo "ERROR: mask-rcnn run failed with status $STATUS!"
 	exit $STATUS
+fi
+
+# - Copy output data to output directory
+if [ "$JOB_DIR" != "$OUTPUT_DIR" ]; then
+	echo "INFO: Copying job outputs in $OUTPUT_DIR ..."
+	echo "ls -ltr $JOB_DIR"
+
+	# - Copy output plot(s)
+	png_count=`ls -1 *.png 2>/dev/null | wc -l`
+  if [ $png_count != 0 ] ; then
+		echo "INFO: Copying output plot file(s) to $OUTPUT_DIR"
+		cp *.png $OUTPUT_DIR
+	fi
+
+	# - Copy output jsons
+	json_count=`ls -1 *.json 2>/dev/null | wc -l`
+	if [ $json_count != 0 ] ; then
+		echo "INFO: Copying output json file(s) to $OUTPUT_DIR"
+		cp *.json $OUTPUT_DIR
+	fi
+        
+	# - Show output directory
+	echo "INFO: Show files in $OUTPUT_DIR ..."
+	echo "ls -ltr $OUTPUT_DIR"
+
+	# - Wait a bit after copying data
+	#   NB: Needed if using rclone inside a container, otherwise nothing is copied
+	if [ $WAIT_COPY = true ]; then
+		echo "sleep $COPY_WAIT_TIME"
+	fi
+
 fi
 
 

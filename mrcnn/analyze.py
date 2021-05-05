@@ -414,6 +414,8 @@ class Analyzer(object):
 		self.nobjs_det_right= np.zeros((1,self.n_classes))
 
 		# - Draw options
+		self.outfile= ""
+		self.outfile_json= ""
 		self.draw= True
 		self.write_to_json= True
 		self.class_color_map= {
@@ -553,13 +555,19 @@ class Analyzer(object):
 		# - Draw results
 		if self.draw:
 			logger.info("Drawing results for image %s ..." % str(self.image_id))
-			outfile= 'out_' + str(self.image_id) + '.png'
+			if self.outfile=="":
+				outfile= 'out_' + str(self.image_id) + '.png'
+			else:
+				outfile= self.outfile
 			self.draw_results(outfile)
 
 		# - Write json results
 		if self.write_to_json:
 			logger.info("Writing results for image %s to json ..." % str(self.image_id))
-			outfile_json= 'out_' + str(self.image_id) + '.json'
+			if self.outfile_json=="":
+				outfile_json= 'out_' + str(self.image_id) + '.json'
+			else:
+				outfile_json= self.outfile_json
 			self.write_json_results(outfile_json)
 
 	
