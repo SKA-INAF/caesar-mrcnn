@@ -88,6 +88,8 @@ COPY_WAIT_TIME=30
 
 RUNMODE=""
 GRAYIMG_OPTION=""
+UINT8_OPTION=""
+ZSCALE_OPTION=""
 CLASS_DICT_MODEL="{\"sidelobe\":1,\"source\":2,\"galaxy\":3}"
 CLASS_DICT="{\"sidelobe\":1,\"source\":2,\"galaxy\":3}"
 CLASS_DICT_OPTION=""
@@ -159,6 +161,13 @@ do
 		# - DATA LOADERS ##	
 		--grayimg*)
     	GRAYIMG_OPTION="--grayimg"
+    ;;
+		--no-uint8*)
+    	UINT8_OPTION="--no_uint8"
+    ;;
+		--zscale-contrasts=*)
+    	ZSCALE=`echo $item | /bin/sed 's/[-a-zA-Z0-9]*=//'`
+			ZSCALE_OPTION="--zscale_contrasts=$ZSCALE"
     ;;
 		--classdict=*)
     	CLASS_DICT=`echo $item | /bin/sed 's/[-a-zA-Z0-9]*=//'`
@@ -355,6 +364,8 @@ fi
 # - Set exec options
 EXE_ARGS=""
 EXE_ARGS="$EXE_ARGS $GRAYIMG_OPTION "
+EXE_ARGS="$EXE_ARGS $UINT8_OPTION "
+EXE_ARGS="$EXE_ARGS $ZSCALE_OPTION "
 EXE_ARGS="$EXE_ARGS $CLASS_DICT_OPTION "
 EXE_ARGS="$EXE_ARGS $CLASS_DICT_MODEL_OPTION "
 EXE_ARGS="$EXE_ARGS $REMAP_CLASSIDS_OPTION "
