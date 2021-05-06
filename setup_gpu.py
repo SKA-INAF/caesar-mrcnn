@@ -49,7 +49,7 @@ else:
 reqs.append('keras>=2.0')
 reqs.append('tensorflow-gpu>=1.13')
 reqs.append('opencv-python')
-reqs.append('h5py')
+reqs.append('h5py<=2.10.0')
 reqs.append('imgaug')
 reqs.append('Pillow')
 reqs.append('cython')
