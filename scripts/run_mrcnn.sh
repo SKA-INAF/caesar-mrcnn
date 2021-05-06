@@ -430,7 +430,7 @@ fi
 # - Copy output data to output directory
 if [ "$JOB_DIR" != "$OUTPUT_DIR" ]; then
 	echo "INFO: Copying job outputs in $OUTPUT_DIR ..."
-	echo "ls -ltr $JOB_DIR"
+	ls -ltr $JOB_DIR
 
 	# - Copy output plot(s)
 	png_count=`ls -1 *.png 2>/dev/null | wc -l`
@@ -448,12 +448,13 @@ if [ "$JOB_DIR" != "$OUTPUT_DIR" ]; then
         
 	# - Show output directory
 	echo "INFO: Show files in $OUTPUT_DIR ..."
-	echo "ls -ltr $OUTPUT_DIR"
+	ls -ltr $OUTPUT_DIR
 
 	# - Wait a bit after copying data
 	#   NB: Needed if using rclone inside a container, otherwise nothing is copied
 	if [ $WAIT_COPY = true ]; then
-		echo "sleep $COPY_WAIT_TIME"
+		echo "INFO: Sleeping $COPY_WAIT_TIME seconds to allow out file copy ..."
+		sleep $COPY_WAIT_TIME
 	fi
 
 fi
