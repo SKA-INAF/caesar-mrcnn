@@ -2380,7 +2380,7 @@ class MaskRCNN():
             "*epoch*", "{epoch:04d}")
 
     def train(self, train_dataset, val_dataset, learning_rate, epochs, layers,
-              augmentation=None, custom_callbacks=None, no_augmentation_sources=None, n_worker_threads=-1):
+              augmentation=None, custom_callbacks=None, no_augmentation_sources=None, n_worker_threads=-1, class_weights=None):
         """Train the model.
         train_dataset, val_dataset: Training and validation Dataset objects.
         learning_rate: The learning rate to train with
@@ -2482,6 +2482,7 @@ class MaskRCNN():
             max_queue_size=100,
             workers=workers,
             use_multiprocessing=True,
+            class_weight=class_weights
         )
         self.epoch = max(self.epoch, epochs)
 

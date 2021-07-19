@@ -208,6 +208,8 @@ class SourceDataset(utils.Dataset):
 		self.apply_biascontrast= False
 		self.bias= 0.5
 		self.contrast= 1	
+		self.nobjs_per_class= {}
+		self.class_weights= {}
 		
 	# ================================================================
 	# ==   INIT
@@ -238,6 +240,7 @@ class SourceDataset(utils.Dataset):
 		for class_name in self.class_id_map:
 			class_id= self.class_id_map[class_name]
 			self.add_class("rg-dataset", class_id, class_name)
+			self.nobjs_per_class[class_id]= 0 # init number of objs of this class
 
 		# - Append unknown class if not given
 		#self.add_class("rg-dataset", -1, "unknown")
@@ -247,6 +250,7 @@ class SourceDataset(utils.Dataset):
 		# - Append bkg & unknown item (if not given in input)
 		self.class_id_map['bkg']= 0
 		#self.class_id_map['unknown']= -1
+		self.nobjs_per_class[0]= 0 # init number of objs for background
 
 		# - Set number of classes
 		self.nclasses= len(self.class_id_map)
@@ -291,6 +295,10 @@ class SourceDataset(utils.Dataset):
 			else:
 				logger.error("Image file %s class name (%s) is not present in dictionary, skip it..." % (filename,class_name))
 				return -1
+
+		# - Count number of objects per class
+		for class_id in class_ids:
+			self.nobjs_per_class[class_id]+= 1
 
 		# - Add image
 		self.add_image(
@@ -358,6 +366,9 @@ class SourceDataset(utils.Dataset):
 					path_masks=[filename_mask_fullpath],
 					class_ids=[class_id]
 				)
+
+				self.nobjs_per_class[class_id]+= 1
+
 				img_counter+= 1
 				self.loaded_imgs+= 1
 				if nmaximgs!=-1 and img_counter>=nmaximgs:
@@ -426,7 +437,7 @@ class SourceDataset(utils.Dataset):
 				class_id= self.class_id_map.get(class_name)
 			else:
 				logger.warn("Image file %s class name (%s) is not present in dictionary, skip it..." % (img_fullpath,class_name))
-				continue
+				continue			
 
 			# check if this mask is that of a source close to a sidelobe
 			sidelobe_mixed_or_near = 0
@@ -451,6 +462,10 @@ class SourceDataset(utils.Dataset):
 			class_ids=class_ids,
 			sidelobes_mixed_or_near=sidelobes_mixed_or_near
 		)
+
+		# - Count number of objects per class
+		for class_id in class_ids:
+			self.nobjs_per_class[class_id]+= 1
 	
 		return 0
 
@@ -652,6 +667,40 @@ class SourceDataset(utils.Dataset):
 		""" Return the uuid of the image."""
 
 		return self.image_info[image_id]['id']
+
+
+	def compute_class_weights(self):
+		""" Compute class weights from number of occurences per class in the dataset"""
+
+		if not self.nobjs_per_class:
+			logger.warn("Cannot compute class weights as the number of objects per class is an empty dict!")
+			return -1
+		
+		# - Compute nclasses and nobjs (excluding background)
+		nclasses= 0
+		nobjs= 0
+		for k in self.nobjs_per_class:
+			nobjs_k= self.nobjs_per_class[k]
+			if nobjs_k<=0:
+				continue
+			nclasses+= 1
+			nobjs+= nobjs_k
+
+		# - Compute class weights
+		for k in self.nobjs_per_class:
+			nobjs_k= self.nobjs_per_class[k]
+			if nobjs_k<=0:
+				self.class_weights[k]= 1.
+			else:
+				self.class_weights[k]= float(nobjs)/(float(nclasses)*float(nobjs_k))
+
+		#mean = np.array(list(self.nobjs_per_class.values())).mean() # sum_class_occurence / nb_classes
+		#max_weight = np.array(list(self.nobjs_per_class.values())).max()
+		#self.class_weights.update((x, float(max_weight/(y))) for x, y in self.nobjs_per_class.items())
+		#self.class_weights= dict(sorted(self.class_weights.items()))
+		
+		return 0
+
 		
 ############################################################
 #        CREATE TRAIN/VAL SETS
@@ -815,6 +864,9 @@ def create_train_val_datasets(args, train_filename='train.dat', crossval_filenam
 		logger.error("Invalid/unknown dataloader (%s) for training!" % args.dataloader)
 		return []
 
+	dataset_train.compute_class_weights()
+	dataset_val.compute_class_weights()
+
 	# - Prepare datasets
 	logger.info("Preparing train & crossval datasets ...")
 	dataset_train.prepare()
@@ -872,6 +924,8 @@ def create_test_dataset(args):
 		logger.error("Invalid/unknown dataloader (%s) for testing!" % args.dataloader)
 		return None
 
+	dataset.compute_class_weights()
+	
 	# - Prepare dataset
 	dataset.prepare()
 	logger.info("#%d entries in the test set ..." % (dataset.loaded_imgs))
@@ -928,6 +982,13 @@ def train(args, model, config, datasets):
 		random_order=True
 	)
 
+	# - Define class weights
+	class_weights= None
+	if args.weight_classes:
+		class_weights= dataset_train.class_weights
+		logger.info("Using class weights in training ...")
+		print(class_weights)
+
 	# - Start train
 	logger.info("Start training ...")
 	model.train(dataset_train, dataset_val,	
@@ -936,7 +997,8 @@ def train(args, model, config, datasets):
 		augmentation=augmentation,
 		#layers='heads',
 		layers='all',
-		n_worker_threads=args.nthreads
+		n_worker_threads=args.nthreads,
+		class_weights=class_weights
 	)
 
 	return 0
@@ -1141,6 +1203,10 @@ def parse_args():
 	parser.set_defaults(mrcnn_mask_loss=True)
 
 	parser.add_argument('--mask_loss_function', dest='mask_loss_function', required=False, type=str, default='binary_crossentropy', choices=['binary_crossentropy', 'dice_coef_loss'], help="Which loss function to use for mask loss. Accepted values are: binary_crossentropy and dice_coef_loss")
+
+	parser.add_argument('--weight_classes', dest='weight_classes', action='store_true')	
+	parser.set_defaults(weight_classes=False)
+	
 
 	# - TEST OPTIONS
 	parser.add_argument('--scoreThr', required=False,default=0.7,type=float,metavar="Object detection score threshold to be used during test",help="Object detection score threshold to be used during test")
