@@ -2380,7 +2380,7 @@ class MaskRCNN():
             "*epoch*", "{epoch:04d}")
 
     def train(self, train_dataset, val_dataset, learning_rate, epochs, layers,
-              augmentation=None, custom_callbacks=None, no_augmentation_sources=None, n_worker_threads=-1, class_weights=None):
+              augmentation=None, custom_callbacks=None, no_augmentation_sources=None, n_worker_threads=-1, class_weights=None, draw_loss=False):
         """Train the model.
         train_dataset, val_dataset: Training and validation Dataset objects.
         learning_rate: The learning rate to train with
@@ -2499,8 +2499,9 @@ class MaskRCNN():
         plt.xlim(left=0)
         plt.ylim(bottom=0)
         plt.legend(['train loss', 'val loss'], loc='upper right')
-        plt.show()
-        plt.savefig('../' + model_name + '.png')
+        if draw_loss:
+          plt.show()
+          plt.savefig('../' + model_name + '.png')
 
     def mold_inputs(self, images):
         """Takes a list of images and modifies them to the format expected
