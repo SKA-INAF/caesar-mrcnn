@@ -15,6 +15,7 @@ Usage: Run from the command line as such:
 
 """
 
+
 import os
 import sys
 import json
@@ -45,6 +46,7 @@ from mrcnn import visualize
 from mrcnn.analyze import ModelTester
 from mrcnn.analyze import Analyzer
 from mrcnn.graph import Graph
+from mrcnn.sfinder import SFinder
 
 ## Import graphics modules
 import matplotlib
@@ -62,6 +64,22 @@ DEFAULT_LOGS_DIR = os.path.join(ROOT_DIR, "logs")
 import warnings
 from astropy.io.fits.verify import VerifyWarning
 warnings.simplefilter('ignore', category=VerifyWarning)
+
+#===========================
+#==   IMPORT MPI
+#===========================
+try:
+	from mpi4py import MPI as MPI
+	comm= MPI.COMM_WORLD
+	nproc= comm.Get_size()
+	procId= comm.Get_rank()
+except Exception as e:
+	logger.warn("Failed to import mpi4py module (err=%s), cannot run in parallel ..." % str(e))
+	MPI= None
+	comm= None
+	nproc= 1
+	procId= 0
+
 
 ############################################################
 #  Configurations
@@ -158,7 +176,6 @@ class SDetectorConfig(Config):
 	# the RPN NMS threshold.
 	TRAIN_ROIS_PER_IMAGE = 512
 
-
 	# Ratios of anchors at each cell (width/height)
 	# A value of 1 represents a square anchor, and 0.5 is a wide anchor
 	RPN_ANCHOR_RATIOS = [0.5, 1, 2]
@@ -181,7 +198,41 @@ class SDetectorConfig(Config):
 	# "mrcnn_class_loss": 1.,
 	# "mrcnn_bbox_loss": 0.1,
 	# "mrcnn_mask_loss": 0.1
- 	#}
+	#}
+
+	## IMG READ OPTIONS
+	IMG_PATH= ""
+	IMG_XMIN= 0
+	IMG_XMAX= 0
+	IMG_YMIN= 0
+	IMG_YMAX= 0
+
+	## OUTPUT OPTIONS
+	OUTFILE= ""
+	OUTFILE_JSON= ""
+
+	# IMG PRE-PROCESSING OPTIONS
+	ZSCALE_STRETCH= True
+	ZSCALE_CONTRASTS= [0.25,0.25,0.25]
+	NORMALIZE_IMG= True
+	IMG_TO_UINT8= True	
+	IMG_TO_RGB= True
+	BIAS_CONTRAST_STRETCH= False
+	IMG_BIAS= 0.5
+	IMG_CONTRAST= 1.0
+ 
+	## DETECTION OPTIONS
+	IOU_THR= 0.6
+	SCORE_THR= 0.7
+
+	## PARALLEL OPTIONS	
+	MPI= None
+	SPLIT_IMG_IN_TILES= False
+	TILE_XSIZE= 512 # in pixels 
+	TILE_YSIZE= 512 # in pixels
+	TILE_XSTEP= 1.0 # 1=no overlap
+	TILE_YSTEP= 1.0 # 1=no overlap
+	MAX_NTASKS_PER_WORKER= 100
 
 
 ############################################################
@@ -1049,73 +1100,91 @@ def test(args, model, config, dataset):
 #        DETECT
 ############################################################
 def detect(args, model, config):
-	""" Test the model on input dataset with ground truth knowledge """  
+	""" Test the model on input dataset with ground truth knowledge """ 
 
-	# - Read image data
-	if args.grayimg:
-		convert_to_rgb= False
+	# - Create sfinder and detect sources
+	sfinder= SFinder(model, config)
+
+	if args.split_img_in_tiles:
+		logger.info("Running sfinder parallel version ...")
+		status= sfinder.run_parallel()
 	else:
-		convert_to_rgb= True	
+		logger.info("Running sfinder serial version ...")
+		status= sfinder.run()
 
-	zscale_contrasts= [float(x) for x in args.zscale_contrasts.split(',')]
-
-	image_data, header= utils.read_fits(
-		args.image,
-		stretch=args.zscale,
-		zscale_contrasts=zscale_contrasts,
-		normalize=True,
-		convertToRGB=convert_to_rgb,
-		to_uint8=args.to_uint8,
-		stretch_biascontrast=args.biascontrast,
-		bias=args.bias,
-		contrast=args.contrast
-	)
-	img_fullpath= os.path.abspath(args.image)
-	img_path_base= os.path.basename(img_fullpath)
-	img_path_base_noext= os.path.splitext(img_path_base)[0]
-	image_id= img_path_base_noext
-	
-	# - Apply model 
-	analyzer= Analyzer(model,config)
-	analyzer.draw= True
-	analyzer.outfile= args.detect_outfile
-	analyzer.write_to_json= True
-	analyzer.outfile_json= args.detect_outfile_json
-	analyzer.iou_thr= args.iouThr
-	analyzer.score_thr= args.scoreThr
-
-	if analyzer.predict(image_data,image_id)<0:
-		logger.error("Failed to run model prediction on image %s!" % args.image)
+	if status<0:
+		logger.error("sfinder run failed, see logs...")
 		return -1
 
-	# - Get results
-	bboxes_det= analyzer.bboxes
-	scores_det= analyzer.scores_final	
-	classid_det= analyzer.class_ids_final
-	masks_det= analyzer.masks_final
-
-	# - Return if no object was detected
-	if not bboxes_det:
-		logger.info("No object detected in image %s ..." % args.image)
-		return 0
-	
-	# - Print results
-	logger.info("#%d objects found in image %s ..." % (len(bboxes_det),args.image))
-	print("bboxes_det")
-	print(bboxes_det)
-	print("scores_det")
-	print(scores_det)
-	print("classid_det")
-	print(classid_det)
-	print("masks_det")
-	print(type(masks_det))
-	for mask in masks_det:
-		print(type(mask))
-		print(mask.shape)
-		print(mask)
-
-	
 	return 0
+
+#def detect(args, model, config):
+#	""" Test the model on input dataset with ground truth knowledge """  
+#
+#	# - Read image data
+#	if args.grayimg:
+#		convert_to_rgb= False
+#	else:
+#		convert_to_rgb= True	
+
+#	zscale_contrasts= [float(x) for x in args.zscale_contrasts.split(',')]
+
+#	image_data, header= utils.read_fits(
+#		args.image,
+#		stretch=args.zscale,
+#		zscale_contrasts=zscale_contrasts,
+#		normalize=True,
+#		convertToRGB=convert_to_rgb,
+#		to_uint8=args.to_uint8,
+#		stretch_biascontrast=args.biascontrast,
+#		bias=args.bias,
+#		contrast=args.contrast
+#	)
+#	img_fullpath= os.path.abspath(args.image)
+#	img_path_base= os.path.basename(img_fullpath)
+#	img_path_base_noext= os.path.splitext(img_path_base)[0]
+#	image_id= img_path_base_noext
+	
+#	# - Apply model 
+#	analyzer= Analyzer(model,config)
+#	analyzer.draw= True
+#	analyzer.outfile= args.detect_outfile
+#	analyzer.write_to_json= True
+#	analyzer.outfile_json= args.detect_outfile_json
+#	analyzer.iou_thr= args.iouThr
+#	analyzer.score_thr= args.scoreThr
+
+#	if analyzer.predict(image_data,image_id)<0:
+#		logger.error("Failed to run model prediction on image %s!" % args.image)
+#		return -1
+
+#	# - Get results
+#	bboxes_det= analyzer.bboxes
+#	scores_det= analyzer.scores_final	
+#	classid_det= analyzer.class_ids_final
+#	masks_det= analyzer.masks_final
+
+#	# - Return if no object was detected
+#	if not bboxes_det:
+#		logger.info("No object detected in image %s ..." % args.image)
+#		return 0
+	
+#	# - Print results
+#	logger.info("#%d objects found in image %s ..." % (len(bboxes_det),args.image))
+#	print("bboxes_det")
+#	print(bboxes_det)
+#	print("scores_det")
+#	print(scores_det)
+#	print("classid_det")
+#	print(classid_det)
+#	print("masks_det")
+#	print(type(masks_det))
+#	for mask in masks_det:
+#		print(type(mask))
+#		print(mask.shape)
+#		print(mask)
+
+#	return 0
 
 ############################################################
 #        PARSE/VALIDATE ARGS
@@ -1142,7 +1211,8 @@ def parse_args():
 	parser.set_defaults(biascontrast=False)
 	parser.add_argument('--bias', dest='bias', required=False, type=float, default=0.5,help='Bias value (default=0.5)') 
 	parser.add_argument('--contrast', dest='contrast', required=False, type=float, default=1.0,help='Contrast value (default=1)') 
-	
+	parser.add_argument('--no_norm_img', dest='norm_img', action='store_false')	
+	parser.set_defaults(norm_img=True)	
 
 	parser.add_argument('--classdict', dest='classdict', required=False, type=str, default='{"sidelobe":1,"source":2,"galaxy":3}',help='Class id dictionary used when loading dataset') 
 	parser.add_argument('--classdict_model', dest='classdict_model', required=False, type=str, default='',help='Class id dictionary used for the model (if empty, it is set equal to classdict)')
@@ -1218,8 +1288,20 @@ def parse_args():
 
 	# - DETECT OPTIONS
 	parser.add_argument('--image',required=False,metavar="Input image",type=str,help='Input image in FITS format to apply the model (used in detect task)')
+	parser.add_argument('--xmin', dest='xmin', required=False, type=int, default=-1, help='Image min x to be read (read all if -1)') 
+	parser.add_argument('--xmax', dest='xmax', required=False, type=int, default=-1, help='Image max x to be read (read all if -1)') 
+	parser.add_argument('--ymin', dest='ymin', required=False, type=int, default=-1, help='Image min y to be read (read all if -1)') 
+	parser.add_argument('--ymax', dest='ymax', required=False, type=int, default=-1, help='Image max y to be read (read all if -1)') 
 	parser.add_argument('--detect_outfile',required=False,metavar="Output plot filename",type=str,default="",help='Output plot PNG filename (internally generated if left empty)')
 	parser.add_argument('--detect_outfile_json',required=False,metavar="Output json filename with detected objects",type=str,default="",help='Output json filename with detected objects (internally generated if left empty)')
+
+	# - PARALLEL PROCESSING OPTIONS
+	parser.add_argument('--split_img_in_tiles', dest='split_img_in_tiles', action='store_true')	
+	parser.set_defaults(split_img_in_tiles=False)
+	parser.add_argument('--tile_xsize', dest='tile_xsize', required=False, type=int, default=512, help='Sub image size in pixel along x') 
+	parser.add_argument('--tile_ysize', dest='tile_ysize', required=False, type=int, default=512, help='Sub image size in pixel along y') 
+	parser.add_argument('--tile_xstep', dest='tile_xstep', required=False, type=float, default=1.0, help='Sub image step fraction along x (=1 means no overlap)') 
+	parser.add_argument('--tile_ystep', dest='tile_ystep', required=False, type=float, default=1.0, help='Sub image step fraction along y (=1 means no overlap)') 
 
 	args = parser.parse_args()
 
@@ -1292,33 +1374,57 @@ def main():
 	"""Main function"""
 
 	#===========================
+	#==   IMPORT MPI
+	#===========================
+	#try:
+	#	from mpi4py import MPI as MPI
+	#	comm= MPI.COMM_WORLD
+	#	nproc= self.comm.Get_size()
+	#	procId= self.comm.Get_rank()
+	#except:
+	#	logger.warn("Failed to import mpi4py module, cannot run in parallel ...")
+	#	MPI= None
+	#	comm= None
+	#	nproc= 1
+	#	procId= 0
+
+	#===========================
 	#==   PARSE ARGS
 	#===========================
-	logger.info("Parsing script args ...")
+	if procId==0:
+		logger.info("[PROC %d] Parsing script args ..." % procId)
 	try:
 		args= parse_args()
 	except Exception as ex:
-		logger.error("Failed to get and parse options (err=%s)",str(ex))
+		logger.error("[PROC %d] Failed to get and parse options (err=%s)" % (procId, str(ex)))
 		return 1
+
+
+	####  DEBUG ####
+	#return 1 
+	###############
+
 
 	#===========================
 	#==   VALIDATE ARGS
 	#===========================
-	logger.info("Validating script args ...")
+	if procId==0:
+		logger.info("[PROC %d] Validating script args ..." % procId)
 	if validate_args(args)<0:
-		logger.error("Argument validation failed, exit...")
+		logger.error("[PROC %d] Argument validation failed, exit ..." % procId)
 		return 1
 
-	print("Weights: ", args.weights)
-	print("Datalist: ", args.datalist)
-	print("Logs: ", args.logs)
-	print("nEpochs: ",args.nepochs)
-	print("epoch_length: ",args.epoch_length)
-	print("nvalidation_steps: ",args.nvalidation_steps)
-	print("ngpu: ",args.ngpu)
-	print("nimg_per_gpu: ",args.nimg_per_gpu)
-	print("scoreThr: ",args.scoreThr)
-	print("classdict: ",args.classdict)
+	if procId==0:
+		print("Weights: ", args.weights)
+		print("Datalist: ", args.datalist)
+		print("Logs: ", args.logs)
+		print("nEpochs: ",args.nepochs)
+		print("epoch_length: ",args.epoch_length)
+		print("nvalidation_steps: ",args.nvalidation_steps)
+		print("ngpu: ",args.ngpu)
+		print("nimg_per_gpu: ",args.nimg_per_gpu)
+		print("scoreThr: ",args.scoreThr)
+		print("classdict: ",args.classdict)
 
 	#===========================
 	#==   SET PARAMETERS
@@ -1336,7 +1442,7 @@ def main():
 	try:
 		class_dict= json.loads(args.classdict)
 	except:
-		logger.error("Failed to convert class dict string to dict!")
+		logger.error("[PROC %d] Failed to convert class dict string to dict!" % procId)
 		return -1	
 
 	class_dict_model= class_dict
@@ -1344,7 +1450,7 @@ def main():
 		try:
 			class_dict_model= json.loads(args.classdict_model)
 		except:
-			logger.error("Failed to convert class dict model string to dict!")
+			logger.error("[PROC %d] Failed to convert class dict model string to dict!" % procId)
 			return -1		
 
 	nclasses= len(class_dict)
@@ -1358,13 +1464,14 @@ def main():
 	for class_name in class_dict_model:
 		class_names_model.append(class_name)
 	
-	logger.info("Assuming #%d+1 classes in dataset from given class dictionary ..." % nclasses)
-	print("CLASS_NAMES (DATASET)")
-	print(class_names)
+	if procId==0:
+		logger.info("[PROC %d] Assuming #%d+1 classes in dataset from given class dictionary ..." % (procId, nclasses))
+		print("CLASS_NAMES (DATASET)")
+		print(class_names)
 	
-	logger.info("Assuming #%d+1 classes in model from given class dictionary ..." % nclasses_model)
-	print("CLASS_NAMES (MODEL)")
-	print(class_names_model)
+		logger.info("[PROC %d] Assuming #%d+1 classes in model from given class dictionary ..." % (procId, nclasses_model))
+		print("CLASS_NAMES (MODEL)")
+		print(class_names_model)
 
 	loss_weight_dict= {}
 	loss_weight_dict['rpn_class_loss']= args.rpn_class_loss_weight
@@ -1399,17 +1506,19 @@ def main():
 	#==   LOAD DATASETS
 	#===========================
 	if args.command == "train":
-		logger.info("Creating/setting & loading train/val datasets ...")
+		if procId==0:
+			logger.info("[PROC %d] Creating/setting & loading train/val datasets ..." % procId)
 		datasets= create_train_val_datasets(args)
 		if len(datasets)!=2:
-			logger.error("Failed to create train/val datasets!")
+			logger.error("[PROC %d] Failed to create train/val datasets!" % procId)
 			return 1
 
 	elif args.command == "test":
-		logger.info("Creating/setting & loading test dataset ...")
+		if procId==0:
+			logger.info("[PROC %d] Creating/setting & loading test dataset ..." % procId)
 		dataset= create_test_dataset(args)
 		if dataset is None:
-			logger.error("Failed to create test dataset!")
+			logger.error("[PROC %d] Failed to create test dataset!" % procId)
 			return 1
 
 	# - Updating steps per epoch
@@ -1427,7 +1536,8 @@ def main():
 			steps_per_epoch= (nentries_train // (args.nimg_per_gpu*args.ngpu))
 			validation_steps_per_epoch= max(1, nentries_val // (args.nimg_per_gpu*args.ngpu))
 
-		logger.info("Train/validation steps per epoch= %d/%d" % (steps_per_epoch,validation_steps_per_epoch))
+		if procId==0:
+			logger.info("[PROC %d] Train/validation steps per epoch= %d/%d" % (procId,steps_per_epoch,validation_steps_per_epoch))
 
 	elif args.command == "test":
 		steps_per_epoch= 1
@@ -1487,6 +1597,33 @@ def main():
 	config.IMAGE_MAX_DIM= args.imgsize
 	config.IMAGE_SHAPE = np.array([config.IMAGE_MAX_DIM, config.IMAGE_MAX_DIM,config.IMAGE_CHANNEL_COUNT])
 
+	config.IMG_PATH= args.image
+	config.IMG_XMIN= args.xmin
+	config.IMG_XMAX= args.xmax
+	config.IMG_YMIN= args.ymin
+	config.IMG_YMAX= args.ymax
+	config.ZSCALE_STRETCH= args.zscale
+	config.ZSCALE_CONTRASTS= [float(x) for x in args.zscale_contrasts.split(',')]
+	config.NORMALIZE_IMG= args.norm_img
+	config.IMG_TO_UINT8= args.to_uint8
+	config.IMG_TO_RGB= not args.grayimg
+	config.BIAS_CONTRAST_STRETCH= args.biascontrast
+	config.IMG_BIAS= args.bias
+	config.IMG_CONTRAST= args.contrast
+
+	config.IOU_THR= args.iouThr
+	config.SCORE_THR= args.scoreThr
+
+	config.MPI= MPI
+	config.SPLIT_IMG_IN_TILES= args.split_img_in_tiles
+	config.TILE_XSIZE= args.tile_xsize
+	config.TILE_YSIZE= args.tile_ysize
+	config.TILE_XSTEP= args.tile_xstep
+	config.TILE_YSTEP= args.tile_ystep
+
+	config.OUTFILE= args.detect_outfile
+	config.OUTFILE_JSON= args.detect_outfile_json
+
 	config.display()
 
 	#===========================
@@ -1504,14 +1641,17 @@ def main():
 		with tf.device(DEVICE):
 			model = modellib.MaskRCNN(mode="inference", config=config, model_dir=args.logs)
 
-	logger.info("Printing the model ...")
-	model.print_model()
+	if procId==0:
+		logger.info("[PROC %d] Printing the model ..." % procId)
+		model.print_model()
 
 	# - Load weights
 	if train_from_scratch:
-		logger.info("No weights given, training from scratch ...")
-	else:	
-		logger.info("Loading weights from file %s ..." % weights_path)
+		if procId==0:
+			logger.info("[PROC %d] No weights given, training from scratch ..." % procId)
+	else:
+		if procId==0:
+			logger.info("[PROC %d] Loading weights from file %s ..." % (procId, weights_path))
 		model.load_weights(weights_path, by_name=True)
 	
 	#===========================
@@ -1520,16 +1660,16 @@ def main():
 	# - Train or evaluate
 	if args.command == "train":
 		if train(args, model, config, datasets)<0:
-			logger.error("Failed to run train!")
+			logger.error("[PROC %d] Failed to run train!" % procId)
 			return 1
 	elif args.command == "test":
 		if test(args, model, config, dataset)<0:
-			logger.error("Failed to run test!")
+			logger.error("[PROC %d] Failed to run test!" % procId)
 			return 1
 	elif args.command == "detect":
 		if detect(args, model, config)<0:
-			logger.error("Failed to run detect!")
-			return 1		
+			logger.error("[PROC %d] Failed to run detect!" % procId)
+			return 1
 	
 	return 0
 
