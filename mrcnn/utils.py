@@ -986,10 +986,36 @@ def read_table(filename):
     t= ascii.read(filename)
     return t
 
-def read_fits(filename, stretch=True, normalize=True, convertToRGB=True, zscale_contrasts=[0.25,0.25,0.25], to_uint8=True, stretch_biascontrast=False, contrast=1, bias=0.5):
+def get_fits_size(filename):
+    """ Read FITS image size """
+
+    # - Open file
+    try:
+        hdu = fits.open(filename, memmap=False)
+    except Exception as ex:
+        errmsg = 'ERROR: Cannot read image file: ' + filename
+        logger.error(errmsg)
+        return None
+
+    # - Get header and check keywords
+    header= hdu[0].header
+    if 'NAXIS1' not in header:
+        logger.error("NAXIS1 keyword missing in header!")
+        return None
+    if 'NAXIS2' not in header:
+        logger.error("NAXIS2 keyword missing in header!")
+        return None
+
+    nx= header['NAXIS1']
+    ny= header['NAXIS2']
+    
+    return nx, ny
+
+
+def read_fits(filename, xmin=-1, xmax=-1, ymin=-1, ymax=-1, stretch=True, normalize=True, convertToRGB=True, zscale_contrasts=[0.25,0.25,0.25], to_uint8=True, stretch_biascontrast=False, contrast=1, bias=0.5):
     """ Read FITS image """
 
-	# - Check contrasts
+    # - Check contrasts
     zscale_contrasts_default= [0.25,0.25,0.25]
     if len(zscale_contrasts)!=3:
         logger.warn("Size of input zscale_contrasts is !=3, ignoring inputs and using default (0.25,0.25,0.25)...")
@@ -1000,7 +1026,17 @@ def read_fits(filename, stretch=True, normalize=True, convertToRGB=True, zscale_
         hdu = fits.open(filename, memmap=False)
     except Exception as ex:
         errmsg = 'ERROR: Cannot read image file: ' + filename
-        print(errmsg)
+        logger.error(errmsg)
+        return None
+
+    # - Check if tile read
+    read_tile= (xmin>=0 and xmax>=0 and ymin>=0 and ymax>=0)
+    if read_tile:
+      if xmax<=xmin:
+        logger.error("xmax must be >xmin for tile reading!")
+        return None
+      if ymax<=ymin:
+        logger.error("ymax must be >ymin for tile reading!")
         return None
 
     # - Read data
@@ -1008,13 +1044,19 @@ def read_fits(filename, stretch=True, normalize=True, convertToRGB=True, zscale_
     data_size = np.shape(data)
     nchan = len(data.shape)
     if nchan == 4:
-      output_data = data[0, 0, :, :]
+      if read_tile:
+        output_data = data[0, 0, ymin:ymax, xmin:xmax]
+      else:
+        output_data = data[0, 0, :, :]
     elif nchan == 2:
-      output_data = data
+      if read_tile:
+        output_data = data[ymin:ymax, xmin:xmax]
+      else:
+        output_data = data
     else:
       errmsg = 'ERROR: Invalid/unsupported number of channels found in file ' + filename + ' (nchan=' + str(nchan) + ')!'
       hdu.close()
-      print(errmsg)
+      logger.error(errmsg)
       return None
 
     # - Convert data to float 32
@@ -1101,14 +1143,14 @@ def read_fits(filename, stretch=True, normalize=True, convertToRGB=True, zscale_
         output_data= output_data_ch1
 
     return output_data, header
-	
-	
+
+
 def stretch_img(data, contrast=0.25):
     """ Apply z-scale stretch to image """
-		
+
     transform = ZScaleInterval(contrast=contrast)
     data_stretched = transform(data)
-	
+
     return data_stretched
 
 def stretch_img_biasconstrast(data, contrast=1, bias=0.5):
@@ -1121,7 +1163,7 @@ def stretch_img_biasconstrast(data, contrast=1, bias=0.5):
 
 def normalize_img(data):
     """ Normalize image to (0,1) """
-	
+
     data_max = np.max(data)
     data_norm = data/data_max
 
@@ -1158,7 +1200,7 @@ def crop_img(data, x0, y0, dx, dy, stretch=False, normalize=False, convertToRGB=
     ymax = int(y0+dy/2)
     #crop_data= data[ymin:ymax+1,xmin:xmax+1]
     crop_data = data[ymin:ymax, xmin:xmax]
-	
+
     #- Replace NAN with zeros and inf with large numbers
     #np.nan_to_num(crop_data,False)
 
@@ -1187,3 +1229,85 @@ def crop_img(data, x0, y0, dx, dy, stretch=False, normalize=False, convertToRGB=
        crop_data = data_rgb
 
     return crop_data
+
+###################
+## IMAGE UTILS
+###################
+def generate_tiles(img_xmin, img_xmax, img_ymin, img_ymax, tileSizeX, tileSizeY, gridStepSizeX, gridStepSizeY):
+  """ Generate coordinates of image tiles """
+
+  # - Check given arguments
+  if img_xmax<=img_xmin:
+    logger.error("xmax must be > xmin!")
+    return None
+  if img_ymax<=img_ymin:
+    logger.error("ymax must be > ymin!")
+    return None
+  if tileSizeX<=0 or tileSizeY<=0:
+    logger.error("Invalid box size given!")
+    return None
+  if gridStepSizeX<=0 or gridStepSizeY<=0 or gridStepSizeX>1 or gridStepSizeY>1:
+    logger.error("Invalid grid step size given (null or negative)!")
+    return None
+
+  # - Check if image size is smaller than required box
+  Nx= img_xmax - img_xmin + 1
+  Ny= img_ymax - img_ymin + 1
+  
+  if tileSizeX>Nx or tileSizeY>Ny:
+    logger.warn("Invalid box size given (too small or larger than image size)!")
+    return None
+
+  stepSizeX= int(np.round(gridStepSizeX*tileSizeX))
+  stepSizeY= int(np.round(gridStepSizeY*tileSizeY))
+
+  # - Generate x & y min & max coordinates
+  indexX= 0
+  indexY= 0
+  ix_min= []
+  ix_max= []
+  iy_min= []
+  iy_max= []
+
+  while indexY<=Ny:
+    #offsetY= min(tileSizeY-1,Ny-1-indexY)
+    offsetY= min(tileSizeY,Ny-indexY)
+    ymin= indexY
+    ymax= indexY + offsetY
+    #ymax= indexY + offsetY + 1
+
+    if ymin>=Ny or offsetY==0:
+      break
+    iy_min.append(ymin)
+    iy_max.append(ymax)
+    indexY+= stepSizeY
+
+  #print("iy min/max")
+  #print(iy_min)
+  #print(iy_max)
+
+  while indexX<=Nx:
+    #offsetX= min(tileSizeX-1,Nx-1-indexX)
+    offsetX= min(tileSizeX,Nx-indexX)
+    xmin= indexX
+    xmax= indexX + offsetX
+    #xmax= indexX + offsetX + 1
+    if xmin>=Nx or offsetX==0: 
+      break
+    ix_min.append(xmin)
+    ix_max.append(xmax)
+    indexX+= stepSizeX
+
+  #print("ix min/max")
+  #print(ix_min)
+  #print(ix_max)
+
+  # - Generate tile coordinates as tuple list
+  tileGrid= []
+  for j in range(len(iy_min)):
+    for i in range(len(ix_min)):
+      tileGrid.append( (img_xmin+ix_min[i], img_xmin+ix_max[i], img_ymin+iy_min[j], img_ymin+iy_max[j]) )
+
+  return tileGrid
+
+

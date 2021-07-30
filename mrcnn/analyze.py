@@ -32,6 +32,10 @@ import matplotlib.pyplot as plt
 from matplotlib import patches, lines
 from matplotlib.patches import Polygon
 
+## Import regions module
+import regions
+from regions import PolygonPixelRegion, RectanglePixelRegion, PixCoord
+
 ## Get logger
 logger = logging.getLogger(__name__)
 
@@ -366,6 +370,8 @@ class Analyzer(object):
 		self.image_path= ''
 		self.image_path_base= ''
 		self.image_path_base_noext= ''
+		self.image_xmin= 0
+		self.image_ymin= 0
 		
 		# - Raw model data
 		self.class_names= None
@@ -399,6 +405,10 @@ class Analyzer(object):
 		#self.source_sidelobe_overlap_iou_thr= 0.1 # If they overlap less than thr, keep separate
 		self.merge_overlap_iou_thr= 0.3 # overlapping objects with same class with IOU>thr are merged in a unique object
 
+		self.results= {}     # dictionary with detected objects
+		self.obj_name_tag= ""
+		self.obj_regions= [] # list of DS9 region objects
+
 		# - Process options
 		self.score_thr= 0.7
 		self.iou_thr= 0.6
@@ -416,8 +426,11 @@ class Analyzer(object):
 		# - Draw options
 		self.outfile= ""
 		self.outfile_json= ""
+		self.outfile_ds9= ""
 		self.draw= True
 		self.write_to_json= True
+		self.write_to_ds9= True
+		self.use_polygon_regions= True
 		self.class_color_map= {
 			'bkg': (0,0,0),# black
 			'sidelobe': (1,0,0),# red
@@ -426,6 +439,16 @@ class Analyzer(object):
 			'galaxy_C1': (1,1,0),# yellow
 			'galaxy_C2': (1,1,0),# yellow
 			'galaxy_C3': (1,1,0),# yellow
+		}
+
+		self.class_color_map_ds9= {
+			'bkg': "black",# black
+			'sidelobe': "red",# red
+			'source': "blue",# blue
+			'galaxy': "yellow",# yellow	
+			'galaxy_C1': "yellow",# yellow
+			'galaxy_C2': "yellow",# yellow
+			'galaxy_C3': "yellow",# yellow
 		}
 
 		# - Data for calculation of mAP Metrics
@@ -518,7 +541,7 @@ class Analyzer(object):
 	# ========================
 	# ==     PREDICT
 	# ========================
-	def predict(self,image,image_id='',bboxes_gt=[],header=None):
+	def predict(self, image, image_id='', bboxes_gt=[], header=None, xmin=0, ymin=0):
 		""" Predict results on given image """
 
 		# - Throw error if image is None
@@ -526,6 +549,8 @@ class Analyzer(object):
 			logger.error("No input image given!")
 			return -1
 		self.image= image
+		self.image_xmin= xmin
+		self.image_ymin= ymin
 
 		if image_id:
 			self.image_id= image_id
@@ -561,7 +586,10 @@ class Analyzer(object):
 				outfile= self.outfile
 			self.draw_results(outfile)
 
-		# - Write json results
+		# - Create dictionary with detected objects
+		self.make_json_results()
+
+		# - Write json results?
 		if self.write_to_json:
 			logger.info("Writing results for image %s to json ..." % str(self.image_id))
 			if self.outfile_json=="":
@@ -570,6 +598,17 @@ class Analyzer(object):
 				outfile_json= self.outfile_json
 			self.write_json_results(outfile_json)
 
+		# - Create DS9 region objects
+		self.make_ds9_regions(self.use_polygon_regions)
+
+		# - Write DS9 regions to file?
+		if self.write_to_ds9:
+			logger.info("Writing detected objects for image %s to DS9 format ..." % str(self.image_id))
+			if self.outfile_ds9=="":
+				outfile_ds9= 'out_' + str(self.image_id) + '.reg'
+			else:
+				outfile_ds9= self.outfile_ds9
+			self.write_ds9_regions(outfile_ds9)
 	
 		return 0
 
@@ -804,10 +843,10 @@ class Analyzer(object):
 			label = self.class_names[class_id]
 			caption = "{} {:.3f}".format(label, score)
 			if score<self.score_thr:
-				logger.info("Skipping object %s (id=%d) with score %f<thr=%f ..." % (label,class_id,score,self.score_thr))
+				logger.debug("Skipping object %s (id=%d) with score %f<thr=%f ..." % (label,class_id,score,self.score_thr))
 				continue
 
-			logger.info("Selecting object %s (id=%d) with score %f>thr=%f ..." % (label,class_id,score,self.score_thr))
+			logger.debug("Selecting object %s (id=%d) with score %f>thr=%f ..." % (label,class_id,score,self.score_thr))
 			masks_sel.append(mask)
 			class_ids_sel.append(class_id)
 			scores_sel.append(score)
@@ -839,7 +878,7 @@ class Analyzer(object):
 					masks_det.append(mask)
 					class_ids_det.append(class_id)
 					scores_det.append(score)
-					logger.info("Selecting object %s (id=%d) with score %f>thr=%f ..." % (label,class_id,score,self.score_thr))
+					logger.debug("Selecting object %s (id=%d) with score %f>thr=%f ..." % (label,class_id,score,self.score_thr))
 					continue
 
 				# - Extract components masks
@@ -941,7 +980,7 @@ class Analyzer(object):
 		#   If so retain the one with largest score (using max graph clique)
 		if self.select_best_overlapped_masks:
 
-			logger.info("Inspecting overlapped objects with different ids and retaining the best one (largest score) ...")
+			logger.debug("Inspecting overlapped objects with different ids and retaining the best one (largest score) ...")
 
 			N_final= len(masks_merged)
 			#g_final= Graph(N_final)
@@ -969,7 +1008,7 @@ class Analyzer(object):
 							mergeable= False						
 
 					if mergeable:
-						logger.info("Merged mask (%d,%d) have connected components and are selected for final selection..." % (i,j))
+						logger.debug("Merged mask (%d,%d) have connected components and are selected for final selection..." % (i,j))
 						#g_final.addEdge(i,j)
 						g_final.add_edge(i,j)
 
@@ -1001,14 +1040,14 @@ class Analyzer(object):
 				class_id_best= class_ids_merged[index_best] 
 				
 				if is_selected[index_best]:
-					logger.info("Mask with index %d (score=%f, class=%d) selected as the best among all the overlapping masks ..." % (index_best,score_best,class_id_best))
+					logger.debug("Mask with index %d (score=%f, class=%d) selected as the best among all the overlapping masks ..." % (index_best,score_best,class_id_best))
 
 				for index in cc_final[clique_index]: 
 					score= scores_merged[index]
 					class_id= class_ids_merged[index]
 					if index!=index_best and is_selected[index]:
 						is_selected[index]= False
-						logger.info("Mask with index %d (score=%f, class=%d) will be excluded ..." % (index,score,class_id))
+						logger.debug("Mask with index %d (score=%f, class=%d) will be excluded ..." % (index,score,class_id))
 
 			# - Compute bounding box, check integrity and set final masks
 			for index in range(len(masks_merged)):
@@ -1258,15 +1297,25 @@ class Analyzer(object):
 	# ====================================
 	# ==   WRITE RESULTS IN JSON FORMAT
 	# ====================================
-	def write_json_results(self, outfile):
-		""" Write a json file with detected objects """
-	
-		results= {"image_id":self.image_id,"objs":[]}
+	def make_json_results(self):
+		""" Create a dictionary with detected objects """
+		
+		self.results= {
+			"image_id": self.image_id, 
+			"objs": []
+		}
+
+		xmin= self.image_xmin
+		ymin= self.image_ymin
+		imgshape= self.image.shape
+		nx= imgshape[1]
+		ny= imgshape[0]
 
 		# - Loop over detected objects
 		if self.masks_final:
 			for i in range(len(self.masks_final)):
 				# - Get detection info
+				sname= 'S' + str(i+1) + "_" + self.obj_name_tag
 				class_id= self.class_ids_final[i]
 				class_name= self.class_names[class_id]
 				y1, x1, y2, x2 = self.bboxes[i]
@@ -1278,9 +1327,20 @@ class Analyzer(object):
 				y2= int(y2)
 				class_id= int(class_id)
 
+				at_edge= False
+				if x1<=0 or x1>=nx-1 or x2<=0 or x2>=nx-1:
+					at_edge= True
+				if y1<=0 or y1>=ny-1 or y2<=0 or y2>=ny-1:
+					at_edge= True
+
 				# - Object pixels
 				mask= self.masks_final[i]
 				pixels= np.argwhere(mask==1).tolist()
+
+				if xmin!=0 or ymin!=0: # add image origin (if not (0,0))
+					for npix in range(len(pixels)):
+						pixels[npix][0]+= ymin
+						pixels[npix][1]+= xmin
 
 				# - Object vertex
 				padded_mask = np.zeros( (mask.shape[0] + 2, mask.shape[1] + 2), dtype=np.uint8)
@@ -1288,31 +1348,124 @@ class Analyzer(object):
 				contours = find_contours(padded_mask, 0.5)
 				vertexes= []
 				for verts in contours:
-					# Subtract the padding and flip (y, x) to (x, y)
+					# - Subtract the padding and flip (y, x) to (x, y)
 					verts = np.fliplr(verts) - 1
 					vertexes.append(verts.tolist())
 
-				#print("type(x1)")
-				#print(type(x1))
-				#print("type(x2)")
-				#print(type(x2))
-				#print("type(y1)")
-				#print(type(y1))
-				#print("type(y2)")
-				#print(type(y2))
-				#print("type(class_id)")
-				#print(type(class_id))
-			
-				d= {"x1":x1,"x2":x2,"y1":y1,"y2":y2,"class_id":class_id,"class_name":class_name,"score":score,"pixels":pixels,"vertexes":vertexes}
-				results["objs"].append(d)
-	
-		#print("results")
-		#print(results)
+				#vertex_list= vertexes[0]
+				vertex_list= vertexes
+				if xmin!=0 or ymin!=0: # add image origin (if not (0,0))
+					for k in range(len(vertex_list)):
+						for nvert in range(len(vertex_list[k])):
+							vertex_list[k][nvert][0]+= xmin
+							vertex_list[k][nvert][1]+= ymin
 
+				d= {
+					"name": sname,
+					"x1": xmin + x1,
+					"x2": xmin + x2,
+					"y1": ymin + y1,
+					"y2": ymin + y2,
+					"class_id": class_id,
+					"class_name": class_name,
+					"score": score,
+					"pixels": pixels,
+					"vertexes": vertex_list,
+					"edge": at_edge
+				}
+				self.results["objs"].append(d)
+	
+		
+	def write_json_results(self, outfile):
+		""" Write a json file with detected objects """
+		
+		# - Check if result dictionary is filled
+		if not self.results:
+			logger.warn("Result obj dictionary is empty, nothing to be written...")
+			return
+				
 		# - Write to file
 		with open(outfile, 'w') as fp:
-			json.dump(results, fp,indent=2,sort_keys=True)
+			json.dump(self.results, fp, indent=2, sort_keys=True)
 		
+	# ====================================
+	# ==   WRITE RESULTS IN DS9 FORMAT
+	# ====================================
+	def make_ds9_regions(self, use_polygon=True):
+		""" Make a list of DS9 regions from json results """
+
+		# - Check if result dictionary was created
+		self.obj_regions= []
+		if not self.results:
+			logger.warn("No result dictionary was filled or no object detected, no region will be produced...")
+			return -1
+		if 'objs' not in self.results:
+			logger.warn("No object list found in result dict...")
+			return -1
+
+		# - Loop over dictionary of detected object
+		for detobj in self.results['objs']:
+			sname= detobj['name']
+			x1= detobj['x1']
+			x2= detobj['x2']
+			y1= detobj['y1']
+			y2= detobj['y2']
+			dx= x2-x1
+			dy= y2-y1
+			xc= x1 + 0.5*dx
+			yc= y1 + 0.5*dy
+			class_name= detobj['class_name']
+			vertexes= detobj['vertexes']
+
+			# - Set region tag
+			at_edge= detobj['edge']
+			class_tag= '{' + class_name + '}'
+
+			tags= []
+			tags.append(class_tag)
+			if at_edge:
+				tags.append('{BORDER}')
+
+			color= self.class_color_map_ds9[class_name]
+			
+			rmeta= regions.RegionMeta({"text": sname, "tag": tags})
+			rvisual= regions.RegionVisual({"color": color})
+
+			# - Loop over contours and create one region per contour
+			ncontours= len(vertexes)
+			for contour in vertexes:			 
+				vertexes_x= []
+				vertexes_y= []
+				for vertex in contour:
+					vertexes_x.append(vertex[0])
+					vertexes_y.append(vertex[1])
+	
+				if use_polygon:
+					r= regions.PolygonPixelRegion(vertices=regions.PixCoord(x=vertexes_x, y=vertexes_y), meta=rmeta, visual=rvisual)
+				else:
+					r= regions.RectanglePixelRegion(xc, yc, dx, dy, meta=rmeta, visual= rvisual)
+				
+				self.obj_regions.append(r)
+
+
+	def write_ds9_regions(self, outfile):
+		""" Write DS9 region file """
+	
+		# - Check if region list is empty
+		if not self.obj_regions:
+			logger.warn("Region list with detected objects is empty, nothing to be written...")
+			return
+
+		# - Write to file
+		try:
+			regions.write(filename=outfile, format='ds9', coordsys='image', overwrite=True) # available for version >=0.5
+		except:
+			try:	
+				logger.debug("Failed to write region list to file, retrying with write_ds9 (<0.5 regions API) ...")
+				regions.write_ds9(regions=self.obj_regions, filename=outfile, coordsys='image') # this is to be used for versions <0.5 (deprecated in v0.5)
+			except Exception as e:
+				logger.warn("Failed to write region list to file (err=%s)!" % str(e))
+			
 
 	# ========================
 	# ==   DRAW RESULTS
@@ -1402,9 +1555,6 @@ class Analyzer(object):
 		#print('savefig: %.2fs' % (t2 - t1))
 		plt.close(fig)
 		#plt.show()
-
-
-
 
 	
 	# ========================
