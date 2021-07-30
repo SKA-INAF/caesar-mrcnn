@@ -53,6 +53,10 @@ reqs.append('h5py<=2.10.0')
 reqs.append('imgaug')
 reqs.append('Pillow')
 reqs.append('cython')
+reqs.append('mpi4py')
+reqs.append('regions')
+reqs.append('numpyencoder')
+
 
 
 data_dir = 'data'
