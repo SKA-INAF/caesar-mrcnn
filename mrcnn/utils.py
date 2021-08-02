@@ -986,6 +986,24 @@ def read_table(filename):
     t= ascii.read(filename)
     return t
 
+def get_fits_header(filename):
+    """ Read FITS image header """
+  
+    # - Open file
+    try:
+        hdu = fits.open(filename, memmap=False)
+    except Exception as ex:
+        errmsg = 'ERROR: Cannot read image file: ' + filename
+        logger.error(errmsg)
+        return None
+
+    # - Get header and check keywords
+    header= hdu[0].header
+    
+    return header
+
+
+
 def get_fits_size(filename):
     """ Read FITS image size """
 

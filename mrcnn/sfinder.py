@@ -18,9 +18,14 @@ from numpyencoder import NumpyEncoder
 
 # - Image proc modules
 from astropy.io import fits
+from astropy.wcs import WCS
+from astropy import units as u
+from astropy.coordinates import SkyCoord
+from astropy.wcs.utils import wcs_to_celestial_frame
+from astropy.stats import sigma_clipped_stats
 import skimage.measure
 from skimage.measure import find_contours
-import cv2
+import cv2 as cv
 
 # - Mask R-CNN modules
 from mrcnn import logger
@@ -267,6 +272,15 @@ class SFinder(object):
 		self.model= model
 		
 		# - Init image/tile size parameters
+		self.header= None
+		self.wcs= None
+		self.dX= 0
+		self.dY= 0
+		self.beamArea= 0
+		self.pixelArea= 0
+		self.bmaj= 0
+		self.bmin= 0
+		self.pa= 0
 		self.image_id= ""
 		self.nx= -1
 		self.ny= -1
@@ -321,6 +335,13 @@ class SFinder(object):
 	def set_img_size_params(self):
 		""" Set image size parameters """
 		
+		# - Read image header
+		self.header= utils.get_fits_header(self.config.IMG_PATH)
+		if self.header is None:
+			logger.error("[PROC %d] Header read from image %s is None!" % (self.procId, self.config.IMG_PATH))
+			return -1
+
+		# - Set image size
 		xmin= self.config.IMG_XMIN
 		xmax= self.config.IMG_XMAX
 		ymin= self.config.IMG_YMIN
@@ -336,12 +357,17 @@ class SFinder(object):
 			self.ymax= ymax
 		else:
 			self.read_subimg= False
-			ret= utils.get_fits_size(self.config.IMG_PATH)
-			if ret is None:
-				logger.error("[PROC %d] Failed to read image size from file %s!" % (self.procId,self.config.IMG_PATH))
+
+			if 'NAXIS1' not in self.header:
+				logger.error("[PROC %d] NAXIS1 keyword missing in header!" % self.procId)
 				return -1
-			self.nx= ret[0]
-			self.ny= ret[1]
+			if 'NAXIS2' not in self.header:
+				logger.error("[PROC %d] NAXIS2 keyword missing in header!" % self.procId)
+				return -1
+
+			self.nx= self.header['NAXIS1']
+			self.ny= self.header['NAXIS2']
+
 			self.xmin= 0
 			self.xmax= self.nx-1
 			self.ymin= 0
@@ -369,6 +395,50 @@ class SFinder(object):
 		img_path_base= os.path.basename(img_fullpath)
 		img_path_base_noext= os.path.splitext(img_path_base)[0]
 		self.image_id= img_path_base_noext
+
+		# - Compute beam area
+		compute_beam_area= True
+		self.beamArea= 0
+
+		if 'CDELT1' not in self.header:
+			logger.warn("[PROC %d] CDELT1 keyword missing in header!" % self.procId)
+			compute_beam_area= False
+		else:
+			self.dX= self.header['CDELT1']
+
+		if 'CDELT2' not in self.header:
+			logger.error("[PROC %d] CDELT2 keyword missing in header!" % self.procId)
+			compute_beam_area= False	
+		else:
+			self.dY= self.header['CDELT2']
+
+		if 'BMAJ' not in self.header:
+			logger.warn("[PROC %d] BMAJ keyword missing in header!" % self.procId)
+			compute_beam_area= False
+		else:
+			self.bmaj= self.header['BMAJ']
+
+		if 'BMIN' not in self.header:
+			logger.warn("[PROC %d] BMIN keyword missing in header!" % self.procId)
+			compute_beam_area= False
+		else:
+			self.bmin= self.header['BMIN']
+		
+		if 'BPA' not in self.header:
+			logger.warn("[PROC %d] BPA keyword missing in header!" % self.procId)
+			compute_beam_area= False
+		else:
+			self.pa= self.header['BPA']
+		
+		if compute_beam_area:
+			self.pixelArea= np.abs(self.dX*self.dY)
+			A= np.pi*self.bmaj*self.bmin/(4*np.log(2))
+			self.beamArea= A/self.pixelArea
+			if self.procId==self.MASTER_ID:
+				logger.info("[PROC %d] Image info: beam(%f,%f,%f), beamArea=%f, dx=%f, dy=%f, pixArea=%g" % (self.procId, self.bmaj*3600,self.bmin*3600,self.pa,self.beamArea,self.dX*3600,self.dY*3600,self.pixelArea))
+
+		# - Get WCS
+		self.wcs = WCS(self.header)
 
 		return 0
 		
@@ -539,6 +609,18 @@ class SFinder(object):
 			logger.info("[PROC %d] Merging sources at tile edges ..." % self.procId)
 			self.merge_edge_sources()
 
+		# - Compute source parameters
+		if self.procId==self.MASTER_ID:
+			logger.info("[PROC %d] Computing source parameters ..." % self.procId)
+			for i in range(len(self.sources["sources"])):
+				source= self.sources["sources"][i]
+				sparams= self.compute_source_params(source)
+				
+				# - Append params to source dictionary
+				if sparams:
+					self.sources["sources"][i].update(sparams)
+
+
 		# - Save to file
 		if self.procId==self.MASTER_ID:
 			logger.info("[PROC %d] Saving source results to file ..." % self.procId)
@@ -554,7 +636,9 @@ class SFinder(object):
 
 		return 0
 
-
+	####################################
+	###      FIND SOURCES AT EDGE
+	####################################
 	def find_sources_at_edge(self, tindex):
 		""" Find sources at tile edges or overlap region """
 		
@@ -620,7 +704,9 @@ class SFinder(object):
 				self.tasks_per_worker[self.procId][tindex].det_sources["objs"][i]["edge"]= True
 				break
 	
-
+	####################################
+	###      MERGE EDGE SOURCES
+	####################################
 	def merge_edge_sources(self):
 		""" Merge sources at tile edges """
 
@@ -847,7 +933,9 @@ class SFinder(object):
 
 		return 0
 
-
+	####################################
+	###      GATHER SOURCE TILE DATA
+	####################################
 	def gather_task_data_from_workers(self):
 		""" Gather task data from all worker in master proc """
 
@@ -899,6 +987,231 @@ class SFinder(object):
 		return 0
 
 
+	####################################
+	###      COMPUTE SOURCE PARAMS
+	####################################
+	def compute_source_params(self, source, offset=10):
+		""" Compute source parameters """
+	
+		params= {}
+		
+		# - Returns if not done by MASTER ID
+		if self.procId!=self.MASTER_ID:
+			return
+
+		# - Compute source binary mask
+		sname= source["name"]
+		pixels= source["pixels"]
+		xmin= source["x1"]
+		xmax= source["x2"]
+		ymin= source["y1"]
+		ymax= source["y2"]
+		dx= xmax-xmin+1
+		dy= ymax-ymin+1
+
+		img_offset_x= min( min(offset, self.nx-1-xmax), min(offset, xmin) )
+		img_offset_y= min( min(offset, self.ny-1-ymax), min(offset, ymin) )
+		xoffset= xmin - img_offset_x
+		yoffset= ymin - img_offset_y
+		
+
+		smask= np.zeros((dy+2*img_offset_y, dx+2*img_offset_x), dtype=np.uint8)
+		
+		for pixel in pixels:
+			x= pixel[1]
+			y= pixel[0]
+			x_mask= x - xoffset
+			y_mask= y - yoffset
+			smask[y_mask][x_mask]= 1
+
+		logger.info("[PROC %d] Source %s: smask shape (%d,%d) " % (self.procId, sname, smask.shape[0], smask.shape[1]))
+
+		# - Compute source mask
+		simg, header= utils.read_fits(
+			filename= self.config.IMG_PATH,
+			xmin= xmin-img_offset_x,
+			xmax= xmax+img_offset_x+1,
+			ymin= ymin-img_offset_y,
+			ymax= ymax+img_offset_y+1,
+			stretch=False,
+			normalize=False,
+			convertToRGB=False,
+			to_uint8=False,
+			stretch_biascontrast=False
+		)		
+
+		logger.info("[PROC %d] Source %s: imgdata shape (%d,%d) " % (self.procId, sname, simg.shape[0], simg.shape[1]))
+
+		simg[smask==0]= 0
+		sdata_1d= simg[smask>0]
+
+		# - Compute flux mean/sigma etc
+		logger.info("[PROC %d] Computing flux parameters for source %s ... " % (self.procId, sname))
+
+		S= np.nansum(sdata_1d)
+		npix= sdata_1d.size - np.isnan(sdata_1d).sum()
+		Smin= np.nanmin(sdata_1d)
+		Smax= np.nanmax(sdata_1d)
+		Smean, Smedian, Sstddev= sigma_clipped_stats(sdata_1d)
+			
+		# - Compute moments from binary image and centroid in pixel coordinates
+		logger.info("[PROC %d] Computing moments and centroid from binary image for source %s ... " % (self.procId, sname))
+		moments= cv.moments(smask, True)	
+		centroid= (moments["m10"]/moments["m00"], moments["m01"]/moments["m00"])	
+		x0= centroid[0] + xoffset
+		y0= centroid[1] + yoffset
+
+		# - Compute flux-weighted centroid in pixel coordinates
+		logger.info("[PROC %d] Computing flux-weighted centroid in pixel coordinates for source %s ... " % (self.procId, sname))
+		moments_w= cv.moments(simg, False)	
+		if moments_w["m00"]==0:
+			logger.warn("[PROC %d] Moment 00 is =0 for source %s, setting weighted centroid to non-weighted one..." % (self.procId, sname))
+			x0_w= x0
+			y0_w= y0
+		else:
+			centroid= (moments_w["m10"]/moments_w["m00"], moments_w["m01"]/moments_w["m00"])	
+			x0_w= centroid[0] + xoffset
+			y0_w= centroid[1] + yoffset
+
+		# - Compute centroids in sky coordinates
+		logger.info("[PROC %d] Computing centroid in sky coordinates for source %s ... " % (self.procId, sname))
+		if self.wcs.naxis==3:
+			coords = self.wcs.all_pix2world([[x0,y0,0]],0)
+			coords_w = self.wcs.all_pix2world([[x0_w,y0_w,0]],0)
+			#coord_bbox= self.wcs.all_pix2world([[self.x,self.y,0]],0)
+			#coord_bbox_corner= self.wcs.all_pix2world([[self.xmax,self.ymax,0]],0)
+
+		elif self.wcs.naxis==4:
+			coords = self.wcs.all_pix2world([[x0,y0,0,0]],0)
+			coords_w = self.wcs.all_pix2world([[x0_w,y0_w,0,0]],0)
+			#coord_bbox= self.wcs.all_pix2world([[self.x,self.y,0,0]],0)
+			#coord_bbox_corner= self.wcs.all_pix2world([[self.xmax,self.ymax,0,0]],0)
+
+		else:
+			coords = self.wcs.all_pix2world([[x0,y0]],0)
+			coords_w = self.wcs.all_pix2world([[x0_w,y0_w]],0)
+			#coord_bbox= self.wcs.all_pix2world([[self.x,self.y]],0)
+			#coord_bbox_corner= self.wcs.all_pix2world([[self.xmax,self.ymax]],0)
+
+		x0_wcs= coords[0][0]
+		y0_wcs= coords[0][1]
+		x0_w_wcs= coords_w[0][0]
+		y0_w_wcs= coords_w[0][1]
+		#x_wcs= coord_bbox[0][0]
+		#y_wcs= coord_bbox[0][1]
+		#xmax_wcs= coord_bbox_corner[0][0]
+		#ymax_wcs= coord_bbox_corner[0][1]
+
+		# - Find contours
+		#contours, _= cv.findContours(self.mask_data.astype(np.uint8), mode=cv.RETR_EXTERNAL, method=cv.CHAIN_APPROX_SIMPLE, offset=(self.bbox.ixmin,self.bbox.iymin))
+		#self.contour= contours[0]    
+	
+		# - Find the min enclosing circle
+		#(cx,cy), r = cv.minEnclosingCircle(self.contour)
+		#self.x0_mincircle= cx
+		#self.y0_mincircle= cy
+		#self.min_radius= r
+		
+		#if self.wcs.naxis==3:
+		#	coords_mincircle = self.wcs.all_pix2world([[self.x0_mincircle,self.y0_mincircle,0]],0)
+		#elif self.wcs.naxis==4:
+		#	coords_mincircle = self.wcs.all_pix2world([[self.x0_mincircle,self.y0_mincircle,0,0]],0)
+		#else:
+		#	coords_mincircle = self.wcs.all_pix2world([[self.x0_mincircle,self.y0_mincircle]],0)
+			
+		#self.x0_mincircle_wcs= coords_mincircle[0][0]
+		#self.y0_mincircle_wcs= coords_mincircle[0][1]
+		#self.min_radius_wcs= self.min_radius*pixSize
+
+		# - Find the rotated rectangles
+		#   NB: order the rectangle vertices such that they appear in order: top-left, top-right, bottom-right, bottom-left (in matrix coordinate system, opposite in cartesian system)
+		#self.minRect = cv.minAreaRect(self.contour)
+		#print("minRect")
+		#print(self.minRect)
+		#vertices= cv.boxPoints(self.minRect)
+
+		#vertices_ordered = perspective.order_points(vertices)
+		#print("type(vertices)")
+		#print(type(vertices))
+		#print(vertices)
+		#print(vertices_ordered)
+
+		#self.rect_center_x= self.minRect[0][0]
+		#self.rect_center_y= self.minRect[0][1]
+		#self.rect_width= self.minRect[1][0]
+		#self.rect_height= self.minRect[1][1]
+		#self.rect_theta= self.minRect[2]
+
+		#vertex_tl= (vertices_ordered[0][0],vertices_ordered[0][1])
+		#vertex_tr= (vertices_ordered[1][0],vertices_ordered[1][1])
+		#vertex_br= (vertices_ordered[2][0],vertices_ordered[2][1])
+		#vertex_bl= (vertices_ordered[3][0],vertices_ordered[3][1])
+		
+		#if self.wcs.naxis==3:
+		#	coords_tl = self.wcs.all_pix2world([[vertex_tl[0],vertex_tl[1],0]],0)
+		#	coords_tr = self.wcs.all_pix2world([[vertex_tr[0],vertex_tr[1],0]],0)
+		#	coords_br= self.wcs.all_pix2world([[vertex_br[0],vertex_br[1],0]],0)
+		#	coords_bl= self.wcs.all_pix2world([[vertex_bl[0],vertex_bl[1],0]],0)
+		#elif self.wcs.naxis==4:
+		#	coords_tl = self.wcs.all_pix2world([[vertex_tl[0],vertex_tl[1],0,0]],0)
+		#	coords_tr = self.wcs.all_pix2world([[vertex_tr[0],vertex_tr[1],0,0]],0)
+		#	coords_br= self.wcs.all_pix2world([[vertex_br[0],vertex_br[1],0,0]],0)
+		#	coords_bl= self.wcs.all_pix2world([[vertex_bl[0],vertex_bl[1],0,0]],0)
+		#else:
+		#	coords_tl = self.wcs.all_pix2world([[vertex_tl[0],vertex_tl[1]]],0)
+		#	coords_tr = self.wcs.all_pix2world([[vertex_tr[0],vertex_tr[1]]],0)
+		#	coords_br= self.wcs.all_pix2world([[vertex_br[0],vertex_br[1]]],0)
+		#	coords_bl= self.wcs.all_pix2world([[vertex_bl[0],vertex_bl[1]]],0)
+
+		#c_tl = SkyCoord(coords_tl[0][0]*u.deg, coords_tl[0][1]*u.deg, frame=cs_name)
+		#c_tr = SkyCoord(coords_tr[0][0]*u.deg, coords_tr[0][1]*u.deg, frame=cs_name)
+		#c_br = SkyCoord(coords_br[0][0]*u.deg, coords_br[0][1]*u.deg, frame=cs_name)
+		#c_bl = SkyCoord(coords_bl[0][0]*u.deg, coords_bl[0][1]*u.deg, frame=cs_name)
+		
+		#width1_wcs= c_tl.separation(c_tr).arcmin
+		#width2_wcs= c_bl.separation(c_br).arcmin
+		#height1_wcs= c_tl.separation(c_bl).arcmin
+		#height2_wcs= c_tr.separation(c_br).arcmin
+		#self.minSize_wcs= min(min(width1_wcs,width2_wcs),min(height1_wcs,height1_wcs))
+		#self.maxSize_wcs= max(max(width1_wcs,width2_wcs),max(height1_wcs,height1_wcs))
+	
+
+		# - Fill parameter dict
+		params["nPix"]= npix
+		params["X0"]= x0
+		params["Y0"]= y0
+		params["X0w"]= x0_w
+		params["Y0w"]= y0_w
+		params["X0_wcs"]= x0_wcs
+		params["Y0_wcs"]= y0_wcs
+		params["X0w_wcs"]= x0_w_wcs
+		params["Y0w_wcs"]= y0_w_wcs
+		params["Xmin"]= xmin
+		params["Xmax"]= xmax
+		params["Ymin"]= ymin
+		params["Ymax"]= ymax
+
+		params["Xmin_wcs"]= -999
+		params["Xmax_wcs"]= -999
+		params["Ymin_wcs"]= -999
+		params["Ymax_wcs"]= -999
+
+		params["S"]= S
+		params["Smin"]= Smin
+		params["Smax"]= Smax
+		params["Smean"]= Smean
+		params["Smedian"]= Smedian
+		params["Sstddev"]= Sstddev
+		if self.beamArea>0:
+			params["flux"]= S/self.beamArea
+		else:
+			params["flux"]= S
+
+		return params
+
+	####################################
+	###      CREATE TILE TASKS
+	####################################
 	def create_tile_tasks(self):
 		""" Create tile tasks """
 		
@@ -1069,7 +1382,9 @@ class SFinder(object):
 	
 		return 0
 
-
+	####################################
+	###      SAVE
+	####################################
 	def save(self):
 		""" Save extracted source to file """
 	
@@ -1099,7 +1414,6 @@ class SFinder(object):
 				outfile_ds9= self.outfile_ds9
 			self.write_ds9_regions(outfile_ds9)
 	
-
 
 	def write_json_results(self, outfile):
 		""" Write a json file with detected objects """
