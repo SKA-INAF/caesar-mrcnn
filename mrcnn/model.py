@@ -2301,8 +2301,12 @@ class MaskRCNN():
             loss = (
                 tf.reduce_mean(layer.output, keepdims=True)
                 * self.config.LOSS_WEIGHTS.get(name, 1.))
-            self.keras_model.metrics_tensors.append(loss)
-            # self.keras_model.metrics.append(loss)
+            try:
+              self.keras_model.metrics_tensors.append(loss)
+              # self.keras_model.metrics.append(loss)
+            except:
+              print("keras_model.metrics_tensors failed, probably due to old Keras version, trying to use keras_model.add_metric...")
+              self.keras_model.add_metric(loss, name)
 
     def set_trainable(self, layer_regex, keras_model=None, indent=0, verbose=1):
         """Sets model layers as trainable if their names match
