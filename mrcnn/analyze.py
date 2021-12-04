@@ -94,7 +94,7 @@ class ModelTester(object):
 		# for each image, for the metrics
 		# TODO convert to attributes (self)
 		# The outer Lists will store a number of Lists, where each of the inner Lists will store the details of the objects in one image
-		# The objects found in each image are themselves stored as a List, storing the bounding box, the classification/label (and the score if it a prediction)
+		# The objects found in each image are themselves stored as a List, storing the bounding box, the classification/label (and the score if it is a prediction)
 		gt_data: List[List[List]] = []
 		pred_data: List[List[List]] = []
 
@@ -340,6 +340,51 @@ class ModelTester(object):
 		with open(detection_file_name, 'w+') as detections_file:
 			json.dump(pred_dict, detections_file)
 
+		# https://github.com/SKA-INAF/metric-computation
+		gt_dict = {}
+		pred_dict = {}
+
+		for i, (gt_image, pred_image) in enumerate(zip(gt_data, pred_data)):
+			image_name: str = self.dataset.image_info[i]['path']
+			image_name = image_name.split(os.sep)[-1]
+
+			gt_dict[image_name] = {}
+			gt_dict[image_name]['labels'] = []
+			gt_dict[image_name]['boxes'] = []
+			for gt_object in gt_image:
+				# expected format is [X1, X2, Y1, Y2], gt_object is in [Y1, X1, Y2, X2]
+				gt_dict[image_name]['boxes'].append([gt_object[1], gt_object[3], gt_object[0], gt_object[2]])
+				class_id: int = self.dataset.class_id_map[gt_object[4]]
+				gt_dict[image_name]['labels'].append(class_id)
+
+			pred_dict[image_name] = {}
+			pred_dict[image_name]['labels'] = []
+			pred_dict[image_name]['boxes'] = []
+			pred_dict[image_name]['scores'] = []
+			for pred_object in pred_image:
+				# expected format is [X1, X2, Y1, Y2], pred_object is in [Y1, X1, Y2, X2]
+				pred_dict[image_name]['boxes'].append([pred_object[1], pred_object[3], pred_object[0], pred_object[2]])
+				class_id: int = self.dataset.class_id_map[pred_object[4]]
+				pred_dict[image_name]['labels'].append(class_id)
+				pred_dict[image_name]['scores'].append(pred_object[5])
+
+		print(gt_dict)
+		print(pred_dict)
+
+		import os
+		import json
+
+		gt_file_path = os.path.join('..', 'metric-computation')
+		os.makedirs(gt_file_path, exist_ok=True)
+		gt_file_name = os.path.join(gt_file_path, 'ground_truth_boxes.json')
+		with open(gt_file_name, 'w+') as gt_file:
+			json.dump(gt_dict, gt_file)
+
+		detection_file_path = os.path.join('..', 'metric-computation')
+		os.makedirs(detection_file_path, exist_ok=True)
+		detection_file_name = os.path.join(detection_file_path, 'predicted_boxes.json')
+		with open(detection_file_name, 'w+') as detections_file:
+			json.dump(pred_dict, detections_file)
 
 # ========================
 # ==    ANALYZER
@@ -1174,19 +1219,19 @@ class Analyzer(object):
 			bbox_gt= self.bboxes_gt[i]
 			class_id_gt= self.class_ids_gt_merged[i]
 			self.nobjs_true[0][class_id_gt]+= 1
-			
+
 			# - Find associations between true and detected objects according to largest IOU
 			index_best= -1
 			iou_best= 0
 			score_best= 0
 			logger.debug("len(self.bboxes)=%d, len(self.class_ids_final)=%d" % (len(self.bboxes),len(self.class_ids_final)))
-	
+
 			for j in range(len(self.bboxes)):
 				class_id= self.class_ids_final[j]
 				score= self.scores_final[j]
 				bbox= self.bboxes[j]
-				
-				# - Check bbox 
+
+				# - Check bbox
 				if bbox[1]>=bbox[3] or bbox[0]>=bbox[2]:
 					logger.warn("Invalid det bbox (%d,%d,%d,%d) in image %s when computing IOU among boxes, skip it..." % (bbox[1],bbox[3],bbox[0],bbox[2],self.image_path) )
 					continue
@@ -1215,7 +1260,7 @@ class Analyzer(object):
 				self.detobj_scores.append(score_best)
 				self.detobj_ious.append(iou_best)
 				logger.info("True object no. %d (class_id=%d) associated to detected object no. %d (class_id=%d) ..." % (i+1,class_id_gt,index_best,class_id_det))
-			
+
 
 		# - Normalize confusion matrix
 		for i in range(self.n_classes):
@@ -1238,9 +1283,9 @@ class Analyzer(object):
 			iou_best= 0
 			for i in range(len(self.bboxes_gt)):
 				bbox_gt= self.bboxes_gt[i]
-				class_id_gt= self.class_ids_gt_merged[i]	
+				class_id_gt= self.class_ids_gt_merged[i]
 
-				# - Check bbox 
+				# - Check bbox
 				if bbox[1]>=bbox[3] or bbox[0]>=bbox[2]:
 					logger.warn("Invalid det bbox (%d,%d,%d,%d) in image %s when computing IOU among boxes, skip it..." % (bbox[1],bbox[3],bbox[0],bbox[2],self.image_path) )
 					continue
@@ -1257,22 +1302,22 @@ class Analyzer(object):
 					index_best= i
 					#iou_best= iou
 					iou_best= mask_iou
-		
+
 			# - Check if correctly detected
 			if index_best!=-1:
-				class_id_det= self.class_ids_gt_merged[index_best]	
+				class_id_det= self.class_ids_gt_merged[index_best]
 				if class_id==class_id_det:
 					self.nobjs_det_right[0][class_id]+= 1
 					#logger.info("Det object %d associated to true object %d (IOU=%f) ..." % (j,index_best,iou_best))
 					#print(self.nobjs_det_right)
 
-	
+
 		for j in range(self.n_classes):
 			if self.nobjs_det[0][j]<=0:
 				continue
 			p= self.nobjs_det_right[0][j]/self.nobjs_det[0][j]
 			self.purity[0][j]= p
-	
+
 
 		# - Print confusion matrix
 		print("== SAMPLE NOBJ TRUE ==")
