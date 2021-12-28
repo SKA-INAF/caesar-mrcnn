@@ -323,9 +323,6 @@ class ModelTester(object):
 		print(gt_dict)
 		print(pred_dict)
 
-		import os
-		import json
-
 		gt_file_path = os.path.join('..',
 									'tarlen5-calculate-mean-ap')
 		os.makedirs(gt_file_path, exist_ok=True)
@@ -340,6 +337,7 @@ class ModelTester(object):
 		with open(detection_file_name, 'w+') as detections_file:
 			json.dump(pred_dict, detections_file)
 
+
 		# https://github.com/SKA-INAF/metric-computation
 		gt_dict = {}
 		pred_dict = {}
@@ -352,9 +350,9 @@ class ModelTester(object):
 			gt_dict[image_name]['labels'] = []
 			gt_dict[image_name]['boxes'] = []
 			for gt_object in gt_image:
-				# expected format is [X1, X2, Y1, Y2], gt_object is in [Y1, X1, Y2, X2]
-				gt_dict[image_name]['boxes'].append([gt_object[1], gt_object[3], gt_object[0], gt_object[2]])
-				class_id: int = self.dataset.class_id_map[gt_object[4]]
+				# expected format is [X1, Y1, X2, Y2], gt_object is in [Y1, X1, Y2, X2]
+				gt_dict[image_name]['boxes'].append([gt_object[1], gt_object[0], gt_object[3], gt_object[2]])
+				class_id: str = gt_object[4]
 				gt_dict[image_name]['labels'].append(class_id)
 
 			pred_dict[image_name] = {}
@@ -362,17 +360,14 @@ class ModelTester(object):
 			pred_dict[image_name]['boxes'] = []
 			pred_dict[image_name]['scores'] = []
 			for pred_object in pred_image:
-				# expected format is [X1, X2, Y1, Y2], pred_object is in [Y1, X1, Y2, X2]
-				pred_dict[image_name]['boxes'].append([pred_object[1], pred_object[3], pred_object[0], pred_object[2]])
-				class_id: int = self.dataset.class_id_map[pred_object[4]]
+				# expected format is [X1, Y1, X2, Y2], pred_object is in [Y1, X1, Y2, X2]
+				pred_dict[image_name]['boxes'].append([pred_object[1], pred_object[0], pred_object[3], pred_object[2]])
+				class_id: str = pred_object[4]
 				pred_dict[image_name]['labels'].append(class_id)
 				pred_dict[image_name]['scores'].append(pred_object[5])
 
 		print(gt_dict)
 		print(pred_dict)
-
-		import os
-		import json
 
 		gt_file_path = os.path.join('..', 'metric-computation')
 		os.makedirs(gt_file_path, exist_ok=True)
