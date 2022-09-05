@@ -160,10 +160,7 @@ class SDetectorConfig(Config):
 	# Image mean (RGB)
 	#####MEAN_PIXEL = np.array([112,112,112])
 	# Image mean (RGB) - consider setting these to zero, and do per image mean/std normalization
-	#MEAN_PIXEL = np.array([0, 0, 0])
-
-	IMAGE_CHANNEL_COUNT= 1 # for gray-level images (see https://github.com/matterport/Mask_RCNN/wiki)
-	MEAN_PIXEL= 0          # for gray-level images
+	MEAN_PIXEL = np.array([0, 0, 0])
 
 	# Non-max suppression threshold to filter RPN proposals.
 	# You can increase this during training to generate more propsals.
