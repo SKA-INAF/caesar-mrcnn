@@ -438,7 +438,7 @@ class SourceDataset(utils.Dataset):
 	# ================================================================
 	# ==   LOAD DATASET FROM JSON
 	# ================================================================
-	def load_data_from_json_file(self, filename, rootdir='', modify_class_names=False):
+	def load_data_from_json_file(self, filename, rootdir='', modify_class_names=True):
 		""" Load dataset specified in a json file """
 
 		# - Read json file
