@@ -156,11 +156,14 @@ class SDetectorConfig(Config):
 	IMAGE_RESIZE_MODE = "square"
 	IMAGE_MIN_DIM = 256
 	IMAGE_MAX_DIM = 256
-	
+
 	# Image mean (RGB)
-	#MEAN_PIXEL = np.array([112,112,112])
+	#####MEAN_PIXEL = np.array([112,112,112])
 	# Image mean (RGB) - consider setting these to zero, and do per image mean/std normalization
-	MEAN_PIXEL = np.array([0, 0, 0])
+	#MEAN_PIXEL = np.array([0, 0, 0])
+
+	IMAGE_CHANNEL_COUNT= 1 # for gray-level images (see https://github.com/matterport/Mask_RCNN/wiki)
+	MEAN_PIXEL= 0          # for gray-level images
 
 	# Non-max suppression threshold to filter RPN proposals.
 	# You can increase this during training to generate more propsals.
@@ -1288,6 +1291,8 @@ def parse_args():
 	parser.add_argument('--weight_classes', dest='weight_classes', action='store_true')	
 	parser.set_defaults(weight_classes=False)
 	
+	parser.add_argument('--exclude_first_layer_weights', dest='exclude_first_layer_weights', action='store_true')	
+	parser.set_defaults(exclude_first_layer_weights=False)
 
 	# - TEST OPTIONS
 	parser.add_argument('--scoreThr', required=False,default=0.7,type=float,metavar="Object detection score threshold to be used during test",help="Object detection score threshold to be used during test")
@@ -1449,6 +1454,8 @@ def main():
 	train_from_scratch= False
 	if not weights_path or weights_path=='':
 		train_from_scratch= True
+
+	exclude_first_layer_weights= args.exclude_first_layer_weights
 
 	try:
 		class_dict= json.loads(args.classdict)
@@ -1618,6 +1625,10 @@ def main():
 	config.NORMALIZE_IMG= args.norm_img
 	config.IMG_TO_UINT8= args.to_uint8
 	config.IMG_TO_RGB= not args.grayimg
+	if args.grayimg:
+		config.IMAGE_CHANNEL_COUNT= 1 # for gray-level images (see https://github.com/matterport/Mask_RCNN/wiki)
+		config.MEAN_PIXEL= 0          # for gray-level images
+
 	config.BIAS_CONTRAST_STRETCH= args.biascontrast
 	config.IMG_BIAS= args.bias
 	config.IMG_CONTRAST= args.contrast
@@ -1662,8 +1673,12 @@ def main():
 			logger.info("[PROC %d] No weights given, training from scratch ..." % procId)
 	else:
 		if procId==0:
-			logger.info("[PROC %d] Loading weights from file %s ..." % (procId, weights_path))
-		model.load_weights(weights_path, by_name=True)
+			logger.info("[PROC %d] Loading weights from file %s (excluding first layer? %d) ..." % (procId, weights_path, exclude_first_layer_weights))
+
+		if exclude_first_layer_weights:
+			model.load_weights(weights_path, by_name=True, exclude='conv1')
+		else:
+			model.load_weights(weights_path, by_name=True)
 	
 	#===========================
 	#==   TRAIN/TEST
