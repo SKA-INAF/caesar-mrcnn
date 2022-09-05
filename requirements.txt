@@ -14,5 +14,5 @@ imgaug
 Pillow
 cython
 mpi4py
-tensorflow>=1.13,<2.0
-keras
+tensorflow==1.13.2
+keras==2.2.4

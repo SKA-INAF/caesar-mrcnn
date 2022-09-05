@@ -485,8 +485,8 @@ class SourceDataset(utils.Dataset):
 				good_masks= False
 				break
 
-			is_flagged= obj['sidelobe-mixed']
-			nislands= obj['nislands']
+			is_flagged= obj_dict['sidelobe-mixed']
+			nislands= obj_dict['nislands']
 			class_name= obj_dict['class']
 	
 			# - Use multi-island and flagged classes?
