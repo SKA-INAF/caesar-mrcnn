@@ -438,7 +438,7 @@ class SourceDataset(utils.Dataset):
 	# ================================================================
 	# ==   LOAD DATASET FROM JSON
 	# ================================================================
-	def load_data_from_json_file(self, filename, rootdir=''):
+	def load_data_from_json_file(self, filename, rootdir='', modify_class_names=False):
 		""" Load dataset specified in a json file """
 
 		# - Read json file
@@ -482,7 +482,18 @@ class SourceDataset(utils.Dataset):
 				good_masks= False
 				break
 
+			is_flagged= obj['sidelobe-mixed']
+			nislands= obj['nislands']
 			class_name= obj_dict['class']
+	
+			# - Use multi-island and flagged classes?
+			if modify_class_names:
+				if nislands>1:
+					class_name= 'extended-multisland'
+				if is_flagged:
+					class_name= 'flagged'
+
+			# - Get class ID from name
 			class_id= 0
 			if class_name in self.class_id_map:
 				class_id= self.class_id_map.get(class_name)
