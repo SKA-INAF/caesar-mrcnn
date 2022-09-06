@@ -18,4 +18,3 @@ logger= logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 logger.info("This is mrcnn {0}-({1})".format(__version__, __date__))
 
-

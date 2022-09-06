@@ -22,6 +22,8 @@ import keras.backend as K
 import keras.layers as KL
 import keras.engine as KE
 import keras.models as KM
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt         # for plotting the loss vs epochs graph
 
 from mrcnn import utils
