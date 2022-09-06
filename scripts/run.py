@@ -488,7 +488,7 @@ class SourceDataset(utils.Dataset):
 	
 			# - Use multi-island and flagged classes?
 			if modify_class_names:
-				if nislands>1:
+				if nislands>1 and class_name=="extended":
 					class_name= 'extended-multisland'
 				if is_flagged:
 					class_name= 'flagged'
