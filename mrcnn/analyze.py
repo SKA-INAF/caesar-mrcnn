@@ -3,7 +3,10 @@ import os
 import sys
 import json
 import time
+import math
 import datetime
+import collections
+import csv
 import logging
 from typing import List		# for type annotation
 
@@ -24,6 +27,14 @@ import skimage.draw
 import skimage.measure
 from skimage.measure import find_contours
 from sklearn.metrics import jaccard_score
+from skimage import measure
+from skimage.measure import regionprops
+import cv2 as cv
+import imutils
+
+## ASTROPY MODULES
+from astropy.io import fits
+from astropy.stats import sigma_clipped_stats
 
 ## Import graphics modules
 import matplotlib
@@ -39,6 +50,14 @@ from regions import PolygonPixelRegion, RectanglePixelRegion, PixCoord
 ## Get logger
 logger = logging.getLogger(__name__)
 
+## Import pyroot
+#try:
+#	import ROOT
+#	from array import array
+#	has_pyroot= True
+#except:
+#	logger.warn("Cannot import pyroot")
+#	has_pyroot= False
 
 # ========================
 # ==    MODEL TESTER
@@ -77,15 +96,35 @@ class ModelTester(object):
 		self.detobj_scoreStdDev= 0
 		self.detobj_iouMean= 0
 		self.detobj_iouStdDev= 0
+		self.detobj_gtinfo= []
 		self.mAP = 0
 
+		# - Output file
+		self.completeness_dict_list= []
+		self.reliability_dict_list= []	
+		self.outfilename_completeness= "completeness.csv"
+		self.outfilename_reliability= "reliability.csv"
+
 	
+	def init(self):
+		""" Init data """
+
+		# - Open output files for writing
+		#logger.info("Opening output ascii filename ...")
+		#self.outfile_completeness= open(self.outfilename_completeness, 'wb')
+		#self.outfile_reliability= open(self.outfilename_reliability, 'wb')
+
+		return 0
+
 	# ========================
 	# ==     TEST
 	# ========================
 	def test(self):
 		""" Test the model on input dataset """    
 	
+		# - Init data
+		#self.init()
+
 		# - Loop over dataset and inspect results
 		nimg= 0
 		logger.info("Processing up to %d images " % (self.n_max_img))
@@ -112,7 +151,7 @@ class ModelTester(object):
 			image_path_base= os.path.basename(image_path)
 
 			# - Initialize the analyzer
-			analyzer= Analyzer(self.model,self.config,self.dataset, gt_data, pred_data)
+			analyzer= Analyzer(self.model, self.config, self.dataset, gt_data, pred_data)
 			analyzer.score_thr= self.score_thr
 			analyzer.iou_thr= self.iou_thr
 			analyzer.remap_classids= self.remap_classids
@@ -120,7 +159,7 @@ class ModelTester(object):
 
 			# - Inspecting results
 			logger.info("Inspecting results for image %s ..." % image_path_base)
-			status= analyzer.inspect_results(image_id,image_path)
+			status= analyzer.inspect_results(image_id, image_path)
 			if status<0:
 				logger.error("Failed to analyze results for image %s ..." % image_path_base)
 				continue
@@ -136,6 +175,10 @@ class ModelTester(object):
 		# - Compute Mean AveragePrecision (mAP)
 		logger.info("Computing Mean AveragePrecision (mAP) ...")
 		self.compute_mAP(gt_data=gt_data, pred_data=pred_data)
+
+		# - Save to file
+		logger.info("Saving result data to file ...")
+		self.save()
 
 		return 0
 
@@ -161,6 +204,130 @@ class ModelTester(object):
 		self.detobj_scores+= detobj_scores_sample
 		self.detobj_ious+= detobj_ious_sample
 
+		# - Append data to completeness output dict
+		image_path= analyzer.image_path
+		class_ids_gt= analyzer.class_ids_gt_merged
+		objinfo_gt= analyzer.detobj_gtinfo
+		scores_det= analyzer.detobj_scores
+		ious_det= analyzer.detobj_ious
+		class_ids_det= analyzer.detobj_classids
+		class_names_det= analyzer.detobj_class_names
+		is_gt_obj_detected= analyzer.is_gt_obj_detected
+
+		if objinfo_gt:
+			if len(class_ids_gt)!=len(objinfo_gt):
+				logger.warn("classids_gt size is different from objinfo_gt size!")
+
+			for i in range(len(objinfo_gt)):
+				obj= objinfo_gt[i]
+				is_flagged= obj['sidelobe-mixed']
+				nislands= obj['nislands']
+				at_border= obj['border']
+				sname= obj['name']
+				snr= obj['snr']
+				maxBeamSize= obj['maxsize_beam']
+				minBeamSize= obj['minsize_beam']
+				aspectRatio= maxBeamSize/minBeamSize
+
+				class_id= class_ids_gt[i]
+				class_name= obj['class']
+				detected= is_gt_obj_detected[i]
+				class_id_det= class_ids_det[i]
+				class_name_det= class_names_det[i]
+				score_det= scores_det[i]
+				iou_det= ious_det[i]
+				
+				d= collections.OrderedDict()
+				d["img"]= image_path
+				d["sname"]= sname
+				d["class_id"]= class_id
+				d["class_name"]= class_name
+				d["class_id_det"]= class_id_det
+				d["class_name_det"]= class_name_det
+				d["detected"]= int(detected)
+				d["score"]= score_det
+				d["iou"]= iou_det
+				d["snr"]= float(snr)
+				d["maxBeamSize"]= float(maxBeamSize)
+				d["aspectRatio"]= float(aspectRatio)
+				d["border"]= int(at_border)
+				self.completeness_dict_list.append(d)
+
+		# - Fill reliability table dict
+		objinfo_det= analyzer.det_obj_pars
+		class_ids_det= analyzer.class_ids_final
+		scores_det= analyzer.scores_final	
+		is_det_obj_matching_to_gt_obj= analyzer.is_det_obj_matching_to_gt_obj
+		matchobj_classids= analyzer.matchobj_classids
+		matchobj_class_names= analyzer.matchobj_class_names
+		matchobj_ious= analyzer.matchobj_ious
+
+
+		if objinfo_det:
+			if len(class_ids_det)!=len(objinfo_det):
+				logger.warn("class_ids_det size is different from objinfo_det size!")
+
+			for i in range(len(objinfo_det)):
+				if not objinfo_det:
+					logger.warn("Skipping this obj info det as empty dict (hint: possibly not filled as contour ops failed) ...")
+				obj_det= objinfo_det[i]
+				at_border= obj_det['border']
+				sname= obj_det['name']
+				snr= obj_det['snr']
+				maxBeamSize= obj_det['maxsize_beam']
+				minBeamSize= obj_det['minsize_beam']
+				aspectRatio= maxBeamSize/minBeamSize
+
+				class_id_det= class_ids_det[i]
+				class_name_det= obj_det['class']
+				matching_gt= is_det_obj_matching_to_gt_obj[i]
+				class_id= matchobj_classids[i]
+				class_name= matchobj_class_names[i]
+				iou_det= matchobj_ious[i]
+				score_det= scores_det[i]
+
+				d= collections.OrderedDict()
+				d["img"]= image_path
+				d["sname"]= sname
+				d["class_id_det"]= class_id_det
+				d["class_name_det"]= class_name_det
+				d["class_id"]= class_id
+				d["class_name"]= class_name
+				d["matching_gt"]= int(matching_gt)
+				d["score"]= float(score_det)
+				d["iou"]= float(iou_det)
+				d["snr"]= float(snr)
+				d["maxBeamSize"]= float(maxBeamSize)
+				d["aspectRatio"]= float(aspectRatio)
+				d["border"]= int(at_border)
+				self.reliability_dict_list.append(d)
+			
+
+	# =============================
+	# ==     SAVE
+	# =============================
+	def save(self):
+		""" Save data """	
+
+		# - Save completeness table file
+		logger.info("Saving completeness table file ...")
+		parnames = self.completeness_dict_list[0].keys()
+		
+		with open(self.outfilename_completeness, 'w') as fp:
+			fp.write("# ")
+			dict_writer = csv.DictWriter(fp, parnames)
+			dict_writer.writeheader()
+			dict_writer.writerows(self.completeness_dict_list)
+
+		# - Save reliability table file
+		logger.info("Saving reliability table file ...")
+		parnames = self.reliability_dict_list[0].keys()
+
+		with open(self.outfilename_reliability, 'w') as fp:
+			fp.write("# ")
+			dict_writer = csv.DictWriter(fp, parnames)
+			dict_writer.writeheader()
+			dict_writer.writerows(self.reliability_dict_list)
 
 	# =============================
 	# ==     COMPUTE PERFORMANCES
@@ -320,8 +487,8 @@ class ModelTester(object):
 				pred_dict[str(i)]['class'].append(pred_object[4])
 				pred_dict[str(i)]['scores'].append(pred_object[5])
 
-		print(gt_dict)
-		print(pred_dict)
+		#print(gt_dict)
+		#print(pred_dict)
 
 		gt_file_path = os.path.join('..',
 									'tarlen5-calculate-mean-ap')
@@ -366,8 +533,8 @@ class ModelTester(object):
 				pred_dict[image_name]['labels'].append(class_id)
 				pred_dict[image_name]['scores'].append(pred_object[5])
 
-		print(gt_dict)
-		print(pred_dict)
+		#print(gt_dict)
+		#print(pred_dict)
 
 		gt_file_path = os.path.join('..', 'metric-computation')
 		os.makedirs(gt_file_path, exist_ok=True)
@@ -433,6 +600,7 @@ class Analyzer(object):
 		# - Processed detected masks
 		self.masks_final= []
 		self.class_ids_final= []
+		self.class_names_final= []
 		self.scores_final= []	
 		self.bboxes= []
 		self.captions= []
@@ -444,6 +612,7 @@ class Analyzer(object):
 		self.split_source_sidelobe= True
 		#self.source_sidelobe_overlap_iou_thr= 0.1 # If they overlap less than thr, keep separate
 		self.merge_overlap_iou_thr= 0.3 # overlapping objects with same class with IOU>thr are merged in a unique object
+		self.det_obj_pars= []
 
 		self.results= {}     # dictionary with detected objects
 		self.obj_name_tag= ""
@@ -456,12 +625,14 @@ class Analyzer(object):
 		# - Performances results
 		self.detobj_scores= []
 		self.detobj_ious= []
+		self.detobj_gtinfo= []
 		self.confusion_matrix= np.zeros((self.n_classes,self.n_classes))
 		self.confusion_matrix_norm= np.zeros((self.n_classes,self.n_classes))	
 		self.purity= np.zeros((1,self.n_classes))
 		self.nobjs_true= np.zeros((1,self.n_classes))
 		self.nobjs_det= np.zeros((1,self.n_classes))
 		self.nobjs_det_right= np.zeros((1,self.n_classes))
+		self.is_gt_obj_detected= []
 
 		# - Draw options
 		self.outfile= ""
@@ -471,24 +642,42 @@ class Analyzer(object):
 		self.write_to_json= True
 		self.write_to_ds9= True
 		self.use_polygon_regions= True
+		#self.class_color_map= {
+		#	'bkg': (0,0,0),# black
+		#	'sidelobe': (1,0,0),# red
+		#	'source': (0,0,1),# blue
+		#	'galaxy': (1,1,0),# yellow	
+		#	'galaxy_C1': (1,1,0),# yellow
+		#	'galaxy_C2': (1,1,0),# yellow
+		#	'galaxy_C3': (1,1,0),# yellow
+		#}
+
 		self.class_color_map= {
 			'bkg': (0,0,0),# black
-			'sidelobe': (1,0,0),# red
-			'source': (0,0,1),# blue
-			'galaxy': (1,1,0),# yellow	
-			'galaxy_C1': (1,1,0),# yellow
-			'galaxy_C2': (1,1,0),# yellow
-			'galaxy_C3': (1,1,0),# yellow
+			'spurious': (1,0,0),# red
+			'compact': (0,0,1),# blue
+			'extended': (1,1,0),# green	
+			'extended-multisland': (1,0.647,0),# orange
+			'flagged': (0,0,0),# black
 		}
 
+		#self.class_color_map_ds9= {
+		#	'bkg': "black",# black
+		#	'sidelobe': "red",# red
+		#	'source': "blue",# blue
+		#	'galaxy': "yellow",# yellow	
+		#	'galaxy_C1': "yellow",# yellow
+		#	'galaxy_C2': "yellow",# yellow
+		#	'galaxy_C3': "yellow",# yellow
+		#}
+
 		self.class_color_map_ds9= {
-			'bkg': "black",# black
-			'sidelobe': "red",# red
-			'source': "blue",# blue
-			'galaxy': "yellow",# yellow	
-			'galaxy_C1': "yellow",# yellow
-			'galaxy_C2': "yellow",# yellow
-			'galaxy_C3': "yellow",# yellow
+			'bkg': "black",
+			'spurious': "red",
+			'compact': "blue",
+			'extended': "green",	
+			'extended-multisland': "orange",
+			'flagged': "magenta",
 		}
 
 		# - Data for calculation of mAP Metrics
@@ -507,28 +696,39 @@ class Analyzer(object):
 	def get_data(self):
 		""" Retrieve data from dataset & model """
 
+		tstart= time.time()
+
 		# - Throw error if dataset is not given
 		if not self.dataset:
 			logger.error("No dataset present!")
 			return -1
 
 		# - Load image
+		t1 = time.time()
 		self.image = self.dataset.load_image(self.image_id)
 		self.image_path_base= os.path.basename(self.image_path)
 		self.image_path_base_noext= os.path.splitext(self.image_path_base)[0]		
 		self.image_uuid= self.dataset.image_uuid(self.image_id)
+		self.image_metadata= self.dataset.image_metadata(self.image_id)
+		t2 = time.time()
+		dt_loadimg= t2-t1
 
 		# - Get detector result
+		t1 = time.time()
 		r = self.model.detect([self.image], verbose=0)[0]	
-		self.class_names= self.dataset.class_names	
+		self.class_names= self.dataset.class_names
 		self.masks= r['masks']
 		self.boxes= r['rois']
 		self.class_ids= r['class_ids']
 		self.scores= r['scores']
 		self.nobjects= self.masks.shape[-1]
 		#N = boxes.shape[0]
+		t2 = time.time()
+		dt_modeldet= t2-t1
 
 		# - Remap detected object ids & name?
+		t1 = time.time()
+
 		if self.remap_classids and self.classid_map:	
 			logger.info("Remapping detection object ids & class names...")		
 			class_ids_remapped= []
@@ -555,9 +755,13 @@ class Analyzer(object):
 			#	class_names_remapped.append(class_name_remap)
 			#self.class_names= class_names_remapped
 
+		t2 = time.time()
+		dt_remapclass= t2-t1
+
 		# - Retrieve ground truth masks
+		t1 = time.time()
 		self.class_names_gt= self.dataset.class_names
-		self.masks_gt= self.dataset.load_gt_masks(self.image_id,binary=False)
+		self.masks_gt= self.dataset.load_gt_masks(self.image_id, binary=False)
 		self.class_ids_gt = self.dataset.image_info[self.image_id]["class_ids"]
 		self.sidelobes_mixed_or_near_gt = self.dataset.image_info[self.image_id]['sidelobes_mixed_or_near']
 		logger.debug("class_ids_gt elements: {}".format(' '.join(map(str, self.class_ids_gt))))
@@ -575,6 +779,23 @@ class Analyzer(object):
 			self.labels_gt.append(label)
 			self.colors_gt.append(color)
 			self.captions_gt.append(label)
+
+		t2 = time.time()
+		dt_loadgtmask= t2-t1
+
+		# - Retrieve ground truth object info (available only in input json data)
+		t1 = time.time()
+		self.objs_gt= self.dataset.load_gt_obj_info(self.image_id)
+		if not self.objs_gt:
+			logger.warn("gt object info list is empty (hint: no object in this image or input data not in json format)...")
+		t2 = time.time()
+		dt_loadgtobjinfo= t2-t1
+
+		# - Print elapsed time stats
+		tend= time.time()
+		dt= tend-tstart
+
+		logger.info("==> get_data() TIME STATS: dt=%.2fs, load_img=%.2f, modeldet=%.2f, remapclass=%.2f, load_gtmask=%.2f, load_gtobjinfo=%.2f" % (dt, dt_loadimg/dt*100., dt_modeldet/dt*100., dt_remapclass/dt*100., dt_loadgtmask/dt*100., dt_loadgtobjinfo/dt*100.))
 
 		return 0
 
@@ -658,17 +879,27 @@ class Analyzer(object):
 	def inspect_results(self,image_id,image_path):
 		""" Inspect results on given image """
 	
+		tstart = time.time()
+		
 		# - Retrieve data from dataset & model
 		logger.info("Retrieve data from dataset & model ...")
+		t1 = time.time()
 		self.image_id= image_id
 		self.image_path= image_path
 		if self.get_data()<0:
 			logger.error("Failed to set data from provided dataset!")
 			return -1
+		t2 = time.time()
+		dt_getdata= t2 - t1 
+		logger.debug('==> get_data(): dt=%.2fs' % (t2 - t1))
 
 		# - Process ground truth masks
 		logger.info("Processing ground truth masks ...")
+		t1 = time.time()
 		self.extract_gt_masks()
+		t2 = time.time()
+		dt_extractgtmasks= t2 - t1 
+		logger.debug('==> extract_gt_masks(): dt=%.2fs' % (t2 - t1))
 
 		# # iterate over groundtruth objects in this image
 		# # (to prepare data for external metric tools)
@@ -681,6 +912,8 @@ class Analyzer(object):
 
 		# iterate over groundtruth objects in this image
 		# (to prepare data for external metric tools)
+		t1 = time.time()
+
 		gt_data_for_image: List = []
 		for i, (bbox_gt, label) in enumerate(zip(self.bboxes_gt, self.captions_gt)):
 			# if it is specified not to consider sources near or mixed with sidelobes
@@ -695,16 +928,39 @@ class Analyzer(object):
 			gt_data_for_image.append(gt_instance)
 		self.gt_data.append(gt_data_for_image)
 
+		t2 = time.time()
+		dt_gtmetricprep= t2 - t1 
+		logger.debug('==> prepare gt data for external metric tools: dt=%.2fs' % (t2 - t1))
+
+
 		# - Process detected masks
+		dt_extractdetmasks= 0. 
 		if self.nobjects>0:
 			logger.info("Processing detected masks ...")
+			t1 = time.time()
 			self.extract_det_masks()
+			t2 = time.time()
+			dt_extractdetmasks= t2-t1
+			logger.debug('==> extract_det_masks(): dt=%.2fs' % (t2 - t1))
 		else:
 			logger.warn("No detected object found for image %s ..." % self.image_path_base)
+
+
+		# - Compute morph parameters for detected objects
+		dt_computedetmaskpars= 0
+		if self.nobjects>0:
+			logger.info("Computing morph parameters for detected objects ...")
+			t1 = time.time()
+			self.compute_det_mask_pars()
+			t2 = time.time()
+			dt_computedetmaskpars= t2-t1
+			logger.debug('==> compute_det_mask_pars(): dt=%.2fs' % (t2 - t1))
 
 		# iterate over each detected object in the image
 		# and store the bounding box, label/classification, and score (confidence)
 		# (to prepare data for external metric tools)
+		t1 = time.time()
+
 		pred_data_for_image: List = []
 		for bbox_pred, label_score in zip(self.bboxes, self.captions):
 			pred_object = bbox_pred.tolist()
@@ -716,16 +972,36 @@ class Analyzer(object):
 			pred_data_for_image.append(pred_object)
 		self.pred_data.append(pred_data_for_image)
 
+		t2 = time.time()
+		dt_detmetricprep= t2 - t1 
+		logger.debug('==> prepare det data for external metric tools: dt=%.2fs' % (t2 - t1))
+
+
 		# - Compute performance results
 		logger.info("Compute performance results for image %s ..." % self.image_path_base)
+		t1 = time.time()
 		self.compute_performances()
+		t2 = time.time()
+		dt_computeperf= t2-t1
+		logger.debug('==> compute_performances(): dt=%.2fs' % (t2 - t1))
+
 
 		# - Draw results
 		if self.draw:
 			logger.info("Drawing results for image %s ..." % self.image_path_base)
+			t1 = time.time()
 			##outfile =  'out_' + self.image_path_base_noext + '.png'
 			outfile =  'out_' + self.image_path_base_noext + '_id' + self.image_uuid + '.png'
 			self.draw_results(outfile)
+			t2 = time.time()
+			dt_draw= t2-t1
+			logger.debug('==> draw_results(): dt=%.2fs' % (t2 - t1))
+
+		# - Dump time stats
+		tend = time.time()
+		dt= (tend - tstart)
+		logger.info("==> TIME STATS: dt=%.2fs, get_data=%.2f, extract_gt_masks=%.2f, extract_det_masks=%.2f, computedetmaskpars=%.2f, prep_gt_metrics=%.2f, prep_det_metrics=%.2f, compute_performances=%.2f, draw=%.2f" % (dt, dt_getdata/dt*100., dt_extractgtmasks/dt*100., dt_extractdetmasks/dt*100., dt_computedetmaskpars/dt*100., dt_gtmetricprep/dt*100., dt_detmetricprep/dt*100., dt_computeperf/dt*100., dt_draw/dt*100.))
+		
 
 		return 0
 		
@@ -758,7 +1034,7 @@ class Analyzer(object):
 				class_id_gt= self.class_ids_gt[k]
 				sidelobe_mixed_or_near_gt= self.sidelobes_mixed_or_near_gt[k]
 
-				if label_gt=='galaxy_C2' or label_gt=='galaxy_C3' or label_gt=='galaxy':
+				if label_gt=='galaxy_C2' or label_gt=='galaxy_C3' or label_gt=='galaxy' or label_gt=='extended' or label_gt=='extended-multisland':
 					masks_gt_det.append(mask_gt)
 					class_ids_gt_det.append(class_id_gt)
 					sidelobes_mixed_or_near_gt_det.append(sidelobe_mixed_or_near_gt)
@@ -861,6 +1137,7 @@ class Analyzer(object):
 		# - Reset mask data		
 		self.masks_final= []
 		self.class_ids_final= []
+		self.class_names_final= []
 		self.scores_final= []	
 		self.bboxes= []
 		self.captions= []
@@ -914,7 +1191,7 @@ class Analyzer(object):
 				score= scores_sel[index]
 
 				# - Skip if class id is galaxy
-				if label=='galaxy_C2' or label=='galaxy_C3' or label=='galaxy':
+				if label=='galaxy_C2' or label=='galaxy_C3' or label=='galaxy' or label=='extended-multisland':
 					masks_det.append(mask)
 					class_ids_det.append(class_id)
 					scores_det.append(score)
@@ -1037,7 +1314,8 @@ class Analyzer(object):
 					mask_j= masks_merged[j]
 					connected= self.are_mask_connected(masks_merged[i],masks_merged[j])
 					#same_class= (class_id_i==class_id_j)
-					is_sidelobe_other= (label_i=='sidelobe' and label_j!='sidelobe') or (label_i!='sidelobe' and label_j=='sidelobe')
+					###is_sidelobe_other= (label_i=='sidelobe' and label_j!='sidelobe') or (label_i!='sidelobe' and label_j=='sidelobe')
+					is_sidelobe_other= (label_i=='spurious' and label_j!='spurious') or (label_i!='spurious' and label_j=='spurious')
 
 					mergeable= connected
 
@@ -1109,6 +1387,7 @@ class Analyzer(object):
 
 				self.masks_final.append(masks_merged[index])
 				self.class_ids_final.append(class_ids_merged[index])
+				self.class_names_final.append(label)
 				self.scores_final.append(scores_merged[index])
 				self.bboxes.append(bbox[0])
 				self.captions.append(caption)
@@ -1181,11 +1460,192 @@ class Analyzer(object):
 
 				self.masks_final.append(masks_merged[index])
 				self.class_ids_final.append(class_ids_merged[index])
+				self.class_names_final.append(label)
 				self.scores_final.append(scores_merged[index])
 				self.bboxes.append(bbox[0])
 				self.captions.append(caption)
 
 			logger.info("#%d detected object masks finally selected ..." % len(self.masks_final))
+
+
+	# ============================
+	# ==   COMPUTE DET MASK PARS
+	# ============================
+	def compute_det_mask_pars(self):
+		""" Compute detected object mask parameters """
+
+		# - Check image info are available
+		has_metadata= True
+		if not self.image_metadata:
+			has_metadata= False
+
+		if has_metadata:
+			nx= self.image_metadata["nx"]
+			ny= self.image_metadata["ny"]
+			dx= self.image_metadata["dx"]
+			dy= self.image_metadata["dy"]
+			img_bkg= self.image_metadata["bkg"]
+			img_rms= self.image_metadata["rms"]
+			bmaj= self.image_metadata["bmaj"]
+			bmin= self.image_metadata["bmin"]
+			beamArea= np.pi*bmaj*bmin/(4*np.log(2)) # in arcsec^2
+			pixelArea= np.abs(dx*dy) # in arcsec^2
+			npixInBeam= beamArea/pixelArea
+			beamWidth= np.sqrt(np.abs(bmaj*bmin)) # arcsec
+			pixScale= np.sqrt(np.abs(dx*dy)) # arcsec
+			beamWidthInPixel= int(math.ceil(beamWidth/pixScale))
+
+		# - Read 2d image data (without pre-processing)
+		logger.info("Reading 2D origin image data from file %s ..." % (self.image_path))
+		data, header= utils.read_fits(
+			self.image_path, 
+			stretch=False, 
+			normalize=False, 
+			convertToRGB=False, 
+			to_uint8= False,
+			stretch_biascontrast=False	
+		)
+
+		nchan= data.shape[-1]
+		ndim= len(data.shape)
+		if ndim!=2:
+			logger.error("Image size needed for computing morph pars should be =2 and not %d!" % (ndim))
+			return -1
+		#if ndim==3 and nchan==3:
+		#	data= self.image[:,:,0]
+
+		# - Loop over detected mask and compute pars
+		self.det_obj_pars= []
+
+		for i in range(len(self.masks_final)):
+			# - Set name
+			name= 'Sdet' + str(i+1)
+
+			# - Set class name
+			class_name= self.class_names[self.class_ids_final[i]]	
+
+			# - Find contours
+			mask= self.masks_final[i]
+			bmap= np.copy(mask)
+			bmap[bmap>0]= 1
+			bmap= bmap.astype(np.uint8)
+
+			logger.debug("Find det obj no. %d contours ..." % (i+1))
+			contours= cv.findContours(bmap, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+			contours= imutils.grab_contours(contours)
+			logger.debug("#%d contours found ..." % (len(contours)))
+
+			# - Find number of islands
+			label_img= measure.label(bmap)
+
+			logger.debug("Find region properties for obj no. %d ..." % (i+1))
+			regprops= regionprops(label_image=label_img, intensity_image=data)
+			logger.debug("#%d regprops found ..." % (len(regprops)))
+			nislands= len(regprops)
+			
+			# - Find number of pixels 
+			cond= np.logical_and(np.isfinite(mask), mask!=0)
+			npix_tot= np.count_nonzero(cond)
+			
+			# - Find signal-to-noise
+			data_1d= data[cond]
+			Stot= np.nansum(data_1d)
+			Sbkg= img_bkg*npix_tot
+			S= Stot-Sbkg
+			Serr_noise= img_rms*np.sqrt(npix_tot) # NOT SURE THIS IS CORRECT, CHECK!!!
+			SNR= S/Serr_noise
+			logger.debug("Object no. %d: Stot=%f, S=%f, S_noise=%f, npix=%d, rms=%f, SNR=%f" % (i+1, Stot, S, Serr_noise, npix_tot, img_rms, SNR))
+		
+
+			# - Find bounding box of entire object (merging contours)
+			#   NB: boundingRect returns Rect(x_top-left, y_top-left, width, height)
+			#   NB2: patches.Rectangle wants top-left corner (bottom visually)
+			#      top-left means bottom visually as y origin is at the top and is increasing from top to bottom 
+			if not contours:
+				logger.warn("No contours found for object no. %d, fill empty dict!" % (i+1))
+				self.det_obj_pars.append({})
+				continue
+
+			for j in range(len(contours)):
+				if j==0:
+					contours_merged= contours[j]
+				else:
+					contours_merged= np.append(contours_merged, contours[j], axis=0)
+		
+			bbox= cv.boundingRect(contours_merged)
+			bbox_x_tl= bbox[0] 
+			bbox_y_tl= bbox[1]
+			bbox_w= bbox[2] 
+			bbox_h= bbox[3]
+			bbox_x= bbox_x_tl + 0.5*bbox_w
+			bbox_y= bbox_y_tl + 0.5*bbox_h
+			
+			# - Find rotated bounding box of entire object
+			bbox_min= cv.minAreaRect(contours_merged)
+			bbox_min_x= bbox_min[0][0]
+			bbox_min_y= bbox_min[0][1]
+			bbox_min_w= bbox_min[1][0] 
+			bbox_min_h= bbox_min[1][1]
+			bbox_min_angle= bbox_min[2]
+			bbox_min_x_tl= bbox_min_x - 0.5*bbox_min_w
+			bbox_min_y_tl= bbox_min_y - 0.5*bbox_min_h
+		
+			bbox_min_points = cv.boxPoints(bbox_min)
+		
+			
+			# - Is at border?
+			bbox_norot_x= bbox_x
+			bbox_norot_y= bbox_y
+			bbox_norot_w= bbox_w
+			bbox_norot_h= bbox_h
+			bbox_norot_xmin= bbox_norot_x - 0.5*bbox_norot_w
+			bbox_norot_xmax= bbox_norot_x + 0.5*bbox_norot_w	
+			bbox_norot_ymin= bbox_norot_y - 0.5*bbox_norot_h
+			bbox_norot_ymax= bbox_norot_y + 0.5*bbox_norot_h
+			at_border_x= (bbox_norot_xmin<=0) or (bbox_norot_xmax>=nx)
+			at_border_y= (bbox_norot_ymin<=0) or (bbox_norot_ymax>=ny)
+			at_border= (at_border_x or at_border_y)
+		
+			# - Compute other morph pars
+			if has_metadata:
+				nbeams= float(npix_tot)/float(npixInBeam)
+				minSizeVSBeam= float(min(bbox_min_w,bbox_min_h))/beamWidthInPixel
+				maxSizeVSBeam= float(max(bbox_min_w,bbox_min_h))/beamWidthInPixel
+				minSizeVSImg= min(float(bbox_norot_w)/float(nx), float(bbox_norot_h)/float(ny))
+				maxSizeVSImg= max(float(bbox_norot_w)/float(nx), float(bbox_norot_h)/float(ny))
+			else:
+				nbeams= -999
+				minSizeVSBeam= -999
+				maxSizeVSBeam= -999
+				minSizeVSImg= -999
+				maxSizeVSImg= -999
+
+			# - Fill par dict
+			det_obj_par_dict= {}
+			det_obj_par_dict["Stot"]= float(Stot)
+			det_obj_par_dict["bbox_angle"]= float(bbox_min_angle)
+			det_obj_par_dict["bbox_h"]= float(bbox_min_h)
+			det_obj_par_dict["bbox_w"]= float(bbox_min_w)
+			det_obj_par_dict["bbox_x"]= float(bbox_min_x)
+			det_obj_par_dict["bbox_y"]= float(bbox_min_y)
+			det_obj_par_dict["border"]= int(at_border)
+			det_obj_par_dict["class"]= class_name
+			det_obj_par_dict["maxsize_beam"]= maxSizeVSBeam 
+			det_obj_par_dict["maxsize_img_fract"]= maxSizeVSImg
+			det_obj_par_dict["minsize_beam"]= minSizeVSBeam
+			det_obj_par_dict["minsize_img_fract"]= minSizeVSImg
+			det_obj_par_dict["name"]= name
+			det_obj_par_dict["nbeams"]= nbeams
+			det_obj_par_dict["nislands"]= nislands
+			det_obj_par_dict["npix"]= npix_tot
+			det_obj_par_dict["snr"]= float(SNR)
+
+			print("== det obj pars ==")
+			print(det_obj_par_dict)
+
+			self.det_obj_pars.append(det_obj_par_dict)
+
+		return 0
 
 
 	# ============================
@@ -1201,6 +1661,16 @@ class Analyzer(object):
 		self.nobjs_true= np.zeros((1,self.n_classes))
 		self.nobjs_det= np.zeros((1,self.n_classes))
 		self.nobjs_det_right= np.zeros((1,self.n_classes))
+		self.detobj_classids= []
+		self.detobj_class_names= []
+		self.detobj_gtinfo= []
+		self.is_gt_obj_detected= []
+		self.is_det_obj_matching_to_gt_obj= []
+		self.is_det_obj_matching_to_gt_obj_sameclass= []
+		self.matchobj_classids= []
+		self.matchobj_class_names= []
+		self.matchobj_ious= []
+			
 
 		# - Loop over gt boxes and find associations to det boxes
 		for i in range(len(self.bboxes_gt)):
@@ -1214,6 +1684,10 @@ class Analyzer(object):
 			bbox_gt= self.bboxes_gt[i]
 			class_id_gt= self.class_ids_gt_merged[i]
 			self.nobjs_true[0][class_id_gt]+= 1
+
+			obj_info_gt= {}
+			if self.objs_gt and not self.split_gtmasks:
+				obj_info_gt= self.objs_gt[i]
 
 			# - Find associations between true and detected objects according to largest IOU
 			index_best= -1
@@ -1246,14 +1720,25 @@ class Analyzer(object):
 					iou_best= mask_iou
 					score_best= score
 
-			# - Update confusion matrix
+			# - Update confusion matrix and other stats
+			if obj_info_gt:
+				self.detobj_gtinfo.append(obj_info_gt)
+
 			if index_best==-1:
 				logger.info("True object no. %d (class_id=%d) not associated to any detected object ..." % (i+1,class_id_gt))
+				self.detobj_scores.append(-999)
+				self.detobj_ious.append(-999)
+				self.detobj_classids.append(-999)
+				self.detobj_class_names.append("not-detected")
+				self.is_gt_obj_detected.append(0)
 			else:
 				class_id_det= self.class_ids_final[index_best]
 				self.confusion_matrix[class_id_gt][class_id_det]+= 1
 				self.detobj_scores.append(score_best)
 				self.detobj_ious.append(iou_best)
+				self.detobj_classids.append(class_id_det)
+				self.detobj_class_names.append(self.class_names[class_id_det])
+				self.is_gt_obj_detected.append(1)
 				logger.info("True object no. %d (class_id=%d) associated to detected object no. %d (class_id=%d) ..." % (i+1,class_id_gt,index_best,class_id_det))
 
 
@@ -1301,11 +1786,22 @@ class Analyzer(object):
 			# - Check if correctly detected
 			if index_best!=-1:
 				class_id_det= self.class_ids_gt_merged[index_best]
+				self.is_det_obj_matching_to_gt_obj.append(1)
+				self.matchobj_classids.append(class_id)
+				self.matchobj_class_names.append(self.class_names[class_id])
+				self.matchobj_ious.append(iou_best)
+
 				if class_id==class_id_det:
 					self.nobjs_det_right[0][class_id]+= 1
+					self.is_det_obj_matching_to_gt_obj_sameclass.append(1)
 					#logger.info("Det object %d associated to true object %d (IOU=%f) ..." % (j,index_best,iou_best))
 					#print(self.nobjs_det_right)
-
+			else:
+				self.is_det_obj_matching_to_gt_obj.append(0)
+				self.is_det_obj_matching_to_gt_obj_sameclass.append(0)	
+				self.matchobj_classids.append(-999)
+				self.matchobj_class_names.append("not-matched")
+				self.matchobj_ious.append(-999)
 
 		for j in range(self.n_classes):
 			if self.nobjs_det[0][j]<=0:
@@ -1528,7 +2024,7 @@ class Analyzer(object):
 		ax.set_ylim(height + 2, -2)
 		ax.set_xlim(-2, width + 2)
 		ax.axis('off')
-		ax.set_title(title,fontsize=30)
+		#ax.set_title(title,fontsize=30)
 	
 		#ax.set_frame_on(False)
 
@@ -1570,7 +2066,7 @@ class Analyzer(object):
 
 				# Mask
 				mask= self.masks_final[i]
-				masked_image = visualize.apply_mask(masked_image, mask, color)
+				masked_image = visualize.apply_mask(masked_image, mask, color, alpha=0.3)
 	
 				# Mask Polygon
 				# Pad to ensure proper polygons for masks that touch image edges.
@@ -1583,8 +2079,11 @@ class Analyzer(object):
 					p = Polygon(verts, facecolor="none", edgecolor=color)
 					ax.add_patch(p)
 
+			# - Draw image
 			ax.imshow(masked_image.astype(np.uint8))
-
+	
+		else:
+			ax.imshow(masked_image)
 
 		# - Write to file	
 		logger.debug("Write to file %s ..." % outfile)

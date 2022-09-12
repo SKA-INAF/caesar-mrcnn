@@ -27,10 +27,10 @@ import numpy as np
 import skimage.draw
 import skimage.measure
 import tensorflow as tf
+
 from imgaug import augmenters as iaa
 from skimage.measure import find_contours
 from sklearn.model_selection import train_test_split
-from imgaug import augmenters as iaa
 import uuid
 import ast
 
@@ -79,6 +79,10 @@ except Exception as e:
 	comm= None
 	nproc= 1
 	procId= 0
+
+
+logger.info("Tensorflow executing in eager mode? %d" % (tf.executing_eagerly()))
+
 
 
 ############################################################
@@ -465,7 +469,20 @@ class SourceDataset(utils.Dataset):
 		if not valid_img:
 			logger.warn("Image file %s does not exist or has unexpected extension (.fits required)" % img_fullpath)
 			return -1
-	
+			
+		# - Read image metadata
+		img_metadata= {}
+		img_metadata["telescope"]= d["telescope"]
+		img_metadata["bkg"]= d["bkg"]
+		img_metadata["rms"]= d["rms"]
+		img_metadata["bmaj"]= d["bmaj"]
+		img_metadata["bmin"]= d["bmin"]
+		img_metadata["dx"]= d["dx"]
+		img_metadata["dy"]= d["dy"]
+		img_metadata["nx"]= d["nx"]
+		img_metadata["ny"]= d["ny"]
+
+		# - Read object info
 		nobjs= len(d['objs'])
 		logger.debug("#%d objects present in file %s ..." % (nobjs,filename))
 				
@@ -492,6 +509,7 @@ class SourceDataset(utils.Dataset):
 					class_name= 'extended-multisland'
 				if is_flagged:
 					class_name= 'flagged'
+				obj_dict['class']= class_name
 
 			# - Get class ID from name
 			class_id= 0
@@ -522,7 +540,9 @@ class SourceDataset(utils.Dataset):
 			path=img_fullpath,
 			path_masks=mask_paths,
 			class_ids=class_ids,
-			sidelobes_mixed_or_near=sidelobes_mixed_or_near
+			sidelobes_mixed_or_near=sidelobes_mixed_or_near,
+			objs=d['objs'],
+			metadata=img_metadata
 		)
 
 		# - Count number of objects per class
@@ -648,6 +668,22 @@ class SourceDataset(utils.Dataset):
 
 
 	# ================================================================
+	# ==   LOAD GT OBJ INFO
+	# ================================================================
+	def load_gt_obj_info(self, image_id):
+		""" Load gt object info (available only in json data input) """
+
+		objs= []
+		info = self.image_info[image_id]
+		if 'objs' not in info:
+			logger.warn("objs key not present in image info (NB: avalilable only in json input data reading), returnin empty list!")
+			return objs
+		
+		objs= info["objs"]
+
+		return objs
+
+	# ================================================================
 	# ==   LOAD MASK (multiple objects per image)
 	# ================================================================
 	def load_mask(self, image_id):
@@ -730,7 +766,20 @@ class SourceDataset(utils.Dataset):
 
 		return self.image_info[image_id]['id']
 
+	# ================================================================
+	# ==   GET IMAGE METADATA
+	# ================================================================
+	def image_metadata(self, image_id):
+		""" Return the image metadata of the image."""
 
+		if 'metadata' not in self.image_info[image_id]:
+			logger.warn("No metadata stored in image info (hint: available only in json input data reading), returning empty dict!")
+			return {}
+		return self.image_info[image_id]['metadata']
+
+	# ================================================================
+	# ==   COMPUTE CLASS WEIGHTS
+	# ================================================================
 	def compute_class_weights(self):
 		""" Compute class weights from number of occurences per class in the dataset"""
 

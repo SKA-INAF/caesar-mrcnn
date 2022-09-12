@@ -12,6 +12,7 @@ import random
 import datetime
 import re
 import math
+import time
 import logging
 from collections import OrderedDict
 import multiprocessing
@@ -2624,6 +2625,10 @@ class MaskRCNN():
         scores: [N] float probability scores for the class IDs
         masks: [H, W, N] instance binary masks
         """
+
+        ### ADDED BY SIMO TO CHECK PERFORMANCE ISSUES ###
+        #tstart = time.time()
+
         assert self.mode == "inference", "Create model in inference mode."
         assert len(
             images) == self.config.BATCH_SIZE, "len(images) must be equal to BATCH_SIZE"
@@ -2634,8 +2639,10 @@ class MaskRCNN():
                 log("image", image)
 
         # Mold inputs to format expected by the neural network
+        #t1 = time.time()
         molded_images, image_metas, windows = self.mold_inputs(images)
-
+        #t2 = time.time()
+        #dt_moldinputs= t2-t1
         
         # Validate image sizes
         # All images in a batch MUST be of the same size
@@ -2645,19 +2652,28 @@ class MaskRCNN():
                 "After resizing, all images must have the same size. Check IMAGE_RESIZE_MODE and image sizes."
 
         # Anchors
+        #t1 = time.time() 
         anchors = self.get_anchors(image_shape)
         # Duplicate across the batch dimension because Keras requires it
         # TODO: can this be optimized to avoid duplicating the anchors?
         anchors = np.broadcast_to(anchors, (self.config.BATCH_SIZE,) + anchors.shape)
+        #t2 = time.time()
+        #dt_getanchors= t2-t1
 
         if verbose:
             log("molded_images", molded_images)
             log("image_metas", image_metas)
             log("anchors", anchors)
+
         # Run object detection
+        #t1 = time.time()
         detections, _, _, mrcnn_mask, _, _, _ =\
             self.keras_model.predict([molded_images, image_metas, anchors], verbose=0)
+        #t2 = time.time()
+        #dt_modelpred= t2-t1
+
         # Process detections
+        #t1 = time.time()
         results = []
         for i, image in enumerate(images):
             final_rois, final_class_ids, final_scores, final_masks =\
@@ -2670,6 +2686,15 @@ class MaskRCNN():
                 "scores": final_scores,
                 "masks": final_masks,
             })
+
+        #t2 = time.time()
+        #dt_unmolddet= t2-t1
+
+        ### ADDED BY SIMO TO CHECK PERFORMANCE ISSUES ###
+        #tend = time.time()
+        #dt= tend-tstart
+        #print("==> model.detect TIME STATS: dt=%f, mold=%f, getanchors=%f, predict=%f, unmold=%f", (dt, dt_moldinputs/dt*100., dt_getanchors/dt*100., dt_modelpred/dt*100., dt_unmolddet/dt*100.))
+
         return results
 
     def detect_molded(self, molded_images, image_metas, verbose=0):
