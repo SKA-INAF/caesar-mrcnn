@@ -1096,6 +1096,8 @@ def train(args, model, config, datasets):
 			],
 			random_order=True
 		)
+	else:
+		logger.info("Training without augmentation steps ...")
 
 	# - Define class weights
 	class_weights= None
@@ -1103,6 +1105,8 @@ def train(args, model, config, datasets):
 		class_weights= dataset_train.class_weights
 		logger.info("Using class weights in training ...")
 		print(class_weights)
+	else:
+		logger.info("Training without class weights ...")
 
 	# - Start train
 	logger.info("Start training ...")

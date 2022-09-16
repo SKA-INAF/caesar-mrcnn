@@ -213,7 +213,7 @@ class ModelTester(object):
 		class_ids_det= analyzer.detobj_classids
 		class_names_det= analyzer.detobj_class_names
 		is_gt_obj_detected= analyzer.is_gt_obj_detected
-
+		
 		if objinfo_gt:
 			if len(class_ids_gt)!=len(objinfo_gt):
 				logger.warn("classids_gt size is different from objinfo_gt size!")
@@ -276,7 +276,9 @@ class ModelTester(object):
 				snr= obj_det['snr']
 				maxBeamSize= obj_det['maxsize_beam']
 				minBeamSize= obj_det['minsize_beam']
-				aspectRatio= maxBeamSize/minBeamSize
+				aspectRatio= -999
+				if minBeamSize>0:
+					aspectRatio= float(maxBeamSize)/float(minBeamSize)
 
 				class_id_det= class_ids_det[i]
 				class_name_det= obj_det['class']
@@ -302,6 +304,12 @@ class ModelTester(object):
 				d["border"]= int(at_border)
 				self.reliability_dict_list.append(d)
 			
+		# - Write current data to file
+		logger.info("Writing current completeness & reliability table data to file ...")
+		self.save()
+
+		return 0
+
 
 	# =============================
 	# ==     SAVE
@@ -310,24 +318,26 @@ class ModelTester(object):
 		""" Save data """	
 
 		# - Save completeness table file
-		logger.info("Saving completeness table file ...")
-		parnames = self.completeness_dict_list[0].keys()
+		if self.completeness_dict_list:
+			logger.info("Saving completeness table file ...")
+			parnames = self.completeness_dict_list[0].keys()
 		
-		with open(self.outfilename_completeness, 'w') as fp:
-			fp.write("# ")
-			dict_writer = csv.DictWriter(fp, parnames)
-			dict_writer.writeheader()
-			dict_writer.writerows(self.completeness_dict_list)
+			with open(self.outfilename_completeness, 'w') as fp:
+				fp.write("# ")
+				dict_writer = csv.DictWriter(fp, parnames)
+				dict_writer.writeheader()
+				dict_writer.writerows(self.completeness_dict_list)
 
 		# - Save reliability table file
-		logger.info("Saving reliability table file ...")
-		parnames = self.reliability_dict_list[0].keys()
+		if self.reliability_dict_list:
+			logger.info("Saving reliability table file ...")
+			parnames = self.reliability_dict_list[0].keys()
 
-		with open(self.outfilename_reliability, 'w') as fp:
-			fp.write("# ")
-			dict_writer = csv.DictWriter(fp, parnames)
-			dict_writer.writeheader()
-			dict_writer.writerows(self.reliability_dict_list)
+			with open(self.outfilename_reliability, 'w') as fp:
+				fp.write("# ")
+				dict_writer = csv.DictWriter(fp, parnames)
+				dict_writer.writeheader()
+				dict_writer.writerows(self.reliability_dict_list)
 
 	# =============================
 	# ==     COMPUTE PERFORMANCES
@@ -1670,8 +1680,7 @@ class Analyzer(object):
 		self.matchobj_classids= []
 		self.matchobj_class_names= []
 		self.matchobj_ious= []
-			
-
+		
 		# - Loop over gt boxes and find associations to det boxes
 		for i in range(len(self.bboxes_gt)):
 			# if it is specified not to consider sources near or mixed with sidelobes
