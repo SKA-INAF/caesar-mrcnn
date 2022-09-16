@@ -1072,26 +1072,30 @@ def train(args, model, config, datasets):
 		return -1
 
 	# - Define image augmentation
-	#   http://imgaug.readthedocs.io/en/latest/source/augmenters.html
-	#augmentation = iaa.SomeOf((0, 2), 
-	#	[
-	#		iaa.Fliplr(1.0),
-	#		iaa.Flipud(1.0),
-	#		iaa.OneOf([iaa.Affine(rotate=90),iaa.Affine(rotate=180),iaa.Affine(rotate=270)])
-	#	]
-	#)
+	augmentation= None
+	if args.use_augmentation:
+		logger.info("Defining and using augmentation steps in training ...")
+
+		#   http://imgaug.readthedocs.io/en/latest/source/augmenters.html
+		#augmentation = iaa.SomeOf((0, 2), 
+		#	[
+		#		iaa.Fliplr(1.0),
+		#		iaa.Flipud(1.0),
+		#		iaa.OneOf([iaa.Affine(rotate=90),iaa.Affine(rotate=180),iaa.Affine(rotate=270)])
+		#	]
+		#)
 	
-	naugmenters_applied= 2
-	augmentation= iaa.SomeOf((0,naugmenters_applied),
-		[
-  		iaa.Fliplr(1.0),
-    	iaa.Flipud(1.0),
-    	iaa.Affine(rotate=(-90, 90), mode='constant', cval=0.0),
-			#iaa.Affine(scale=(0.5, 1.5), mode='constant', cval=0.0),
-			iaa.Affine(translate_percent={"x": (-0.3, 0.3), "y": (-0.3, 0.3)}, mode='constant', cval=0.0)
-		],
-		random_order=True
-	)
+		naugmenters_applied= 2
+		augmentation= iaa.SomeOf((0,naugmenters_applied),
+			[
+  			iaa.Fliplr(1.0),
+  	  	iaa.Flipud(1.0),
+  	  	iaa.Affine(rotate=(-90, 90), mode='constant', cval=0.0),
+				#iaa.Affine(scale=(0.5, 1.5), mode='constant', cval=0.0),
+				iaa.Affine(translate_percent={"x": (-0.3, 0.3), "y": (-0.3, 0.3)}, mode='constant', cval=0.0)
+			],
+			random_order=True
+		)
 
 	# - Define class weights
 	class_weights= None
@@ -1339,6 +1343,9 @@ def parse_args():
 	
 	parser.add_argument('--exclude_first_layer_weights', dest='exclude_first_layer_weights', action='store_true')	
 	parser.set_defaults(exclude_first_layer_weights=False)
+
+	parser.add_argument('--no_augmentation', dest='use_augmentation', action='store_false')
+	parser.set_defaults(use_augmentation=True)
 
 	# - TEST OPTIONS
 	parser.add_argument('--scoreThr', required=False,default=0.7,type=float,metavar="Object detection score threshold to be used during test",help="Object detection score threshold to be used during test")
