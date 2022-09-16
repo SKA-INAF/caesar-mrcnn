@@ -1,5 +1,6 @@
 numpy
 numpyencoder
+ipython
 astropy
 regions
 future
