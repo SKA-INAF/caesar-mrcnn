@@ -9,6 +9,7 @@ pyparsing
 matplotlib
 scikit-image
 opencv-python
+imutils
 h5py
 imgaug
 Pillow
