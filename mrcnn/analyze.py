@@ -447,11 +447,14 @@ class ModelTester(object):
 		# Object-Detection-Metrics https://github.com/rafaelpadilla/Object-Detection-Metrics
 		import os
 		# create the file paths in case they don't already exist
-		gt_file_path = os.path.join('..',
+		currdir= os.getcwd()
+		##gt_file_path = os.path.join('..',
+		gt_file_path = os.path.join(currdir,
 									'Object-Detection-Metrics',
 									'groundtruths')
 		os.makedirs(gt_file_path, exist_ok=True)
-		detection_file_path = os.path.join('..',
+		##detection_file_path = os.path.join('..',
+		detection_file_path = os.path.join(currdir,
 										   'Object-Detection-Metrics',
 										   'detections')
 		os.makedirs(detection_file_path, exist_ok=True)
@@ -500,15 +503,15 @@ class ModelTester(object):
 		#print(gt_dict)
 		#print(pred_dict)
 
-		gt_file_path = os.path.join('..',
-									'tarlen5-calculate-mean-ap')
+		##gt_file_path = os.path.join('..', 'tarlen5-calculate-mean-ap')
+		gt_file_path = os.path.join(currdir, 'tarlen5-calculate-mean-ap')
 		os.makedirs(gt_file_path, exist_ok=True)
 		gt_file_name = os.path.join(gt_file_path, 'ground_truth_boxes.json')
 		with open(gt_file_name, 'w+') as gt_file:
 			json.dump(gt_dict, gt_file)
 
-		detection_file_path = os.path.join('..',
-										   'tarlen5-calculate-mean-ap')
+		##detection_file_path = os.path.join('..', 'tarlen5-calculate-mean-ap')
+		detection_file_path = os.path.join(currdir, 'tarlen5-calculate-mean-ap')
 		os.makedirs(detection_file_path, exist_ok=True)
 		detection_file_name = os.path.join(detection_file_path, 'predicted_boxes.json')
 		with open(detection_file_name, 'w+') as detections_file:
@@ -546,13 +549,15 @@ class ModelTester(object):
 		#print(gt_dict)
 		#print(pred_dict)
 
-		gt_file_path = os.path.join('..', 'metric-computation')
+		##gt_file_path = os.path.join('..', 'metric-computation')
+		gt_file_path = os.path.join(currdir, 'metric-computation')
 		os.makedirs(gt_file_path, exist_ok=True)
 		gt_file_name = os.path.join(gt_file_path, 'ground_truth_boxes.json')
 		with open(gt_file_name, 'w+') as gt_file:
 			json.dump(gt_dict, gt_file)
 
-		detection_file_path = os.path.join('..', 'metric-computation')
+		##detection_file_path = os.path.join('..', 'metric-computation')
+		detection_file_path = os.path.join(currdir, 'metric-computation')
 		os.makedirs(detection_file_path, exist_ok=True)
 		detection_file_name = os.path.join(detection_file_path, 'predicted_boxes.json')
 		with open(detection_file_name, 'w+') as detections_file:
@@ -1794,17 +1799,20 @@ class Analyzer(object):
 
 			# - Check if correctly detected
 			if index_best!=-1:
-				class_id_det= self.class_ids_gt_merged[index_best]
+				class_id_gt= self.class_ids_gt_merged[index_best]
 				self.is_det_obj_matching_to_gt_obj.append(1)
-				self.matchobj_classids.append(class_id)
-				self.matchobj_class_names.append(self.class_names[class_id])
+				self.matchobj_classids.append(class_id_gt)
+				self.matchobj_class_names.append(self.class_names[class_id_gt])
 				self.matchobj_ious.append(iou_best)
 
-				if class_id==class_id_det:
+				if class_id==class_id_gt:
 					self.nobjs_det_right[0][class_id]+= 1
 					self.is_det_obj_matching_to_gt_obj_sameclass.append(1)
 					#logger.info("Det object %d associated to true object %d (IOU=%f) ..." % (j,index_best,iou_best))
 					#print(self.nobjs_det_right)
+				else:
+					self.is_det_obj_matching_to_gt_obj_sameclass.append(0)
+
 			else:
 				self.is_det_obj_matching_to_gt_obj.append(0)
 				self.is_det_obj_matching_to_gt_obj_sameclass.append(0)	
