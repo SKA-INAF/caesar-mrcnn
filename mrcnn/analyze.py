@@ -97,6 +97,7 @@ class ModelTester(object):
 		self.detobj_iouMean= 0
 		self.detobj_iouStdDev= 0
 		self.detobj_gtinfo= []
+		self.compute_mAP_metrics= False
 		self.mAP = 0
 
 		# - Output file
@@ -172,9 +173,10 @@ class ModelTester(object):
 		logger.info("Computing final performances ...")
 		self.compute_performances()
 
-		# - Compute Mean AveragePrecision (mAP)
-		logger.info("Computing Mean AveragePrecision (mAP) ...")
-		self.compute_mAP(gt_data=gt_data, pred_data=pred_data)
+		# - Compute Mean AveragePrecision (mAP)	
+		if self.compute_mAP_metrics:
+			logger.info("Computing Mean AveragePrecision (mAP) ...")
+			self.compute_mAP(gt_data=gt_data, pred_data=pred_data)
 
 		# - Save to file
 		logger.info("Saving result data to file ...")
@@ -206,6 +208,9 @@ class ModelTester(object):
 
 		# - Append data to completeness output dict
 		image_path= analyzer.image_path
+		image_tel= analyzer.image_metadata["telescope"]
+		image_rms= analyzer.image_metadata["rms"]
+		image_bkg= analyzer.image_metadata["bkg"]
 		class_ids_gt= analyzer.class_ids_gt_merged
 		objinfo_gt= analyzer.detobj_gtinfo
 		scores_det= analyzer.detobj_scores
@@ -239,6 +244,9 @@ class ModelTester(object):
 				
 				d= collections.OrderedDict()
 				d["img"]= image_path
+				d["telescope"]= image_tel
+				d["img_rms"]= image_rms
+				d["img_bkg"]= image_bkg
 				d["sname"]= sname
 				d["class_id"]= class_id
 				d["class_name"]= class_name
@@ -290,6 +298,9 @@ class ModelTester(object):
 
 				d= collections.OrderedDict()
 				d["img"]= image_path
+				d["telescope"]= image_tel
+				d["img_rms"]= image_rms
+				d["img_bkg"]= image_bkg
 				d["sname"]= sname
 				d["class_id_det"]= class_id_det
 				d["class_name_det"]= class_name_det
@@ -654,6 +665,8 @@ class Analyzer(object):
 		self.outfile_json= ""
 		self.outfile_ds9= ""
 		self.draw= True
+		self.draw_shaded_masks= False
+		self.draw_class_label_in_caption= False
 		self.write_to_json= True
 		self.write_to_ds9= True
 		self.use_polygon_regions= True
@@ -2070,20 +2083,30 @@ class Analyzer(object):
 			logger.debug("Draw detected objects...")
 			for i in range(len(self.masks_final)):
 				label= self.class_names[self.class_ids_final[i]]
+				score= self.scores_final[i]
 				color = self.class_color_map[label]
 		
 				# Bounding box
 				y1, x1, y2, x2 = self.bboxes[i]
+				dx= x2-x1
+				dy= y2-y1
 				p = patches.Rectangle((x1, y1), x2 - x1, y2 - y1, linewidth=2,alpha=0.7, linestyle="solid",edgecolor=color, facecolor='none')
 				ax.add_patch(p)
 	
 				# Label
-				caption = self.captions[i]
-				ax.text(x1, y1 + 8, caption, color=color, size=20, backgroundcolor="none")
+				if self.draw_class_label_in_caption:
+					caption = self.captions[i]
+					ax.text(x1, y1 + 8, caption, color=color, size=20, backgroundcolor="none")
+				else:
+					caption = "{:.2f}".format(score)
+					#ax.text(x1 + dx/2 - 4, y1 - 1, caption, color=color, size=23, backgroundcolor="none")
+					#ax.text(x1 + dx/2 - 4, y1 - 1, caption, color="mediumturquoise", size=23, backgroundcolor="none")
+					ax.text(x1 + dx/2 - 4, y1 - 1, caption, color="darkturquoise", size=30, backgroundcolor="none")
 
 				# Mask
 				mask= self.masks_final[i]
-				masked_image = visualize.apply_mask(masked_image, mask, color, alpha=0.3)
+				if self.draw_shaded_masks:
+					masked_image = visualize.apply_mask(masked_image, mask, color, alpha=0.3)
 	
 				# Mask Polygon
 				# Pad to ensure proper polygons for masks that touch image edges.
