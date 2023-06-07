@@ -317,14 +317,15 @@ class SFinder(object):
 		self.sregions= []
 		self.outfile_ds9= ""
 		self.class_color_map_ds9= {
-			'bkg': "black",# black
-			'sidelobe': "red",# red
-			'source': "blue",# blue
-			'galaxy': "yellow",# yellow	
-			'galaxy_C1': "yellow",# yellow
-			'galaxy_C2': "yellow",# yellow
-			'galaxy_C3': "yellow",# yellow
+			'bkg': "black",
+			'spurious': "red",
+			'compact': "blue",
+			'extended': "green",
+			'extended-multisland': "yellow",
+			'flagged': "black",
+			'diffuse': "magenta"
 		}
+		
 
 		# - Save json catalog output file
 		self.save_tile_json= True
@@ -489,7 +490,7 @@ class SFinder(object):
 		analyzer.iou_thr= self.config.IOU_THR
 		analyzer.score_thr= self.config.SCORE_THR
 
-		if analyzer.predict(image_data, image_id)<0:
+		if analyzer.predict(image_data, self.image_id)<0:
 			logger.error("Failed to run model prediction on image %s!" % self.config.IMG_PATH)
 			return -1
 
