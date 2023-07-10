@@ -745,6 +745,8 @@ class SourceDataset(utils.Dataset):
 		)
 		#image, header= utils.read_fits(filename,stretch=True,normalize=True,convertToRGB=True)
 		
+		logger.info("Image %s range: %f/%f" % (filename, image.min(), image.max()))
+		
 		return image
 
 	# ================================================================
