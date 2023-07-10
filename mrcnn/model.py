@@ -2291,9 +2291,15 @@ class MaskRCNN():
         self.keras_model.add_loss(tf.add_n(reg_losses))
 
         # Compile
+        logger.info("Compiling model ...")
         self.keras_model.compile(
             optimizer=optimizer,
             loss=[None] * len(self.keras_model.outputs))
+
+        print("Optimizer SGD: lr=%f, momentum=%f, clipnorm=%f" % (learning_rate, momentum, self.config.GRADIENT_CLIP_NORM))
+        print("weight_decay=%f" % (self.config.WEIGHT_DECAY))
+        print("reg_losses")
+        print(reg_losses)
 
         # Add metrics for losses
         for name in loss_names:
